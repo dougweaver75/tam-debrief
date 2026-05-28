@@ -163,3 +163,15 @@ def test_company_contacts_list(client):
     assert r.status_code == 200
     assert len(r.get_json()) == 1
     assert r.get_json()[0]['first_name'] == 'Ann'
+
+def test_contact_with_company_id(client):
+    r_co = client.post('/api/companies', json={'name': 'AcmeCorp'})
+    coid = r_co.get_json()['id']
+    r = client.post('/api/contacts', json={
+        'first_name': 'John', 'last_name': 'Doe', 'company_id': coid
+    })
+    assert r.status_code == 201
+    assert r.get_json()['company_id'] == coid
+    contacts = client.get(f'/api/companies/{coid}/contacts').get_json()
+    assert len(contacts) == 1
+    assert contacts[0]['first_name'] == 'John'

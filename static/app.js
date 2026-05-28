@@ -55,6 +55,32 @@ function esc(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 
+async function populateCompanyDropdown(selectId, selectedId) {
+  const sel = document.getElementById(selectId);
+  if (!sel) return;
+  try {
+    const companies = await API.get('/api/companies');
+    sel.innerHTML = '<option value="">— None —</option>' +
+      companies.map(co =>
+        `<option value="${co.id}"${co.id === selectedId ? ' selected' : ''}>${esc(co.name)}</option>`
+      ).join('');
+  } catch (e) { /* leave dropdown with just the None option */ }
+}
+
+async function populateContactDropdown(selectId, selectedId, excludeId) {
+  const sel = document.getElementById(selectId);
+  if (!sel) return;
+  try {
+    const contacts = await API.get('/api/contacts');
+    sel.innerHTML = '<option value="">— None —</option>' +
+      contacts
+        .filter(c => c.id !== excludeId)
+        .map(c =>
+          `<option value="${c.id}"${c.id === selectedId ? ' selected' : ''}>${esc(c.last_name)}, ${esc(c.first_name)}</option>`
+        ).join('');
+  } catch (e) { /* leave dropdown */ }
+}
+
 const TYPE_LABELS  = { call:'Call', email:'Email', meeting:'Meeting', note:'Note' };
 
 // ── Contacts List ──────────────────────────────────────────────────────────
@@ -123,10 +149,11 @@ function debounceSearch(val) {
 }
 
 // Add contact modal
-function openAddContact() {
+async function openAddContact() {
   document.getElementById('contactModalTitle').textContent = 'Add Contact';
   document.getElementById('contactId').value = '';
   document.getElementById('contactForm').reset();
+  await populateCompanyDropdown('cfCompanyId', null);
   openModal('contactModal');
 }
 
@@ -135,14 +162,14 @@ async function openEditContact(id) {
   try {
     const c = await API.get(`/api/contacts/${id}`);
     document.getElementById('contactModalTitle').textContent = 'Edit Contact';
-    document.getElementById('contactId').value  = c.id;
+    document.getElementById('contactId').value   = c.id;
     document.getElementById('cfFirstName').value = c.first_name || '';
     document.getElementById('cfLastName').value  = c.last_name  || '';
-    document.getElementById('cfCompany').value   = c.company    || '';
     document.getElementById('cfTitle').value     = c.title      || '';
     document.getElementById('cfEmail').value     = c.email      || '';
     document.getElementById('cfPhone').value     = c.phone      || '';
     document.getElementById('cfNotes').value     = c.notes      || '';
+    await populateCompanyDropdown('cfCompanyId', c.company_id);
     openModal('contactModal');
   } catch (e) { showToast('Failed to load contact.'); }
 }
@@ -153,7 +180,7 @@ async function submitContact(e) {
   const data = {
     first_name: document.getElementById('cfFirstName').value.trim(),
     last_name:  document.getElementById('cfLastName').value.trim(),
-    company:    document.getElementById('cfCompany').value.trim(),
+    company_id: document.getElementById('cfCompanyId').value || null,
     title:      document.getElementById('cfTitle').value.trim(),
     email:      document.getElementById('cfEmail').value.trim(),
     phone:      document.getElementById('cfPhone').value.trim(),
@@ -196,6 +223,12 @@ async function loadContactDetail(contactId) {
       API.get(`/api/contacts/${contactId}/interactions`)
     ]);
     _currentContact = contact;
+    if (contact.company_id) {
+      try { contact._company = await API.get(`/api/companies/${contact.company_id}`); } catch (e) {}
+    }
+    if (contact.reports_to) {
+      try { contact._reportsTo = await API.get(`/api/contacts/${contact.reports_to}`); } catch (e) {}
+    }
     renderContactDetail(contact);
     renderInteractions(interactions);
   } catch (e) {
@@ -208,6 +241,13 @@ function renderContactDetail(c) {
   const fn = c.first_name || '';
   const ln = c.last_name  || '';
   const initials = ((fn[0] || '') + (ln[0] || '')).toUpperCase();
+  const companyName = c._company ? c._company.name : (c.company || '');
+  const companyLink = c._company
+    ? `<a href="/companies/${c._company.id}" class="table-link">${esc(companyName)}</a>`
+    : esc(companyName) || '—';
+  const reportsToDisplay = c._reportsTo
+    ? `<a href="/contacts/${c._reportsTo.id}" class="table-link">${esc(c._reportsTo.first_name)} ${esc(c._reportsTo.last_name)}</a>`
+    : '—';
   document.getElementById('contactDetailRoot').innerHTML = `
     <a href="/contacts" class="back-link">← All Contacts</a>
     <div class="card">
@@ -216,7 +256,7 @@ function renderContactDetail(c) {
           <div class="contact-avatar">${esc(initials)}</div>
           <div>
             <div class="contact-name">${esc(fn)} ${esc(ln)}</div>
-            <div class="contact-meta">${esc([c.title, c.company].filter(Boolean).join(' · '))}</div>
+            <div class="contact-meta">${esc([c.title, companyName].filter(Boolean).join(' · '))}</div>
           </div>
         </div>
         <div style="display:flex;gap:8px">
@@ -225,6 +265,10 @@ function renderContactDetail(c) {
         </div>
       </div>
       <div class="contact-fields">
+        <div class="field-row"><span class="field-label">Company</span>
+          <span class="field-value">${companyLink}</span></div>
+        <div class="field-row"><span class="field-label">Reports To</span>
+          <span class="field-value">${reportsToDisplay}</span></div>
         <div class="field-row"><span class="field-label">Email</span>
           <span class="field-value">${c.email ? `<a href="mailto:${esc(c.email)}">${esc(c.email)}</a>` : '—'}</span></div>
         <div class="field-row"><span class="field-label">Phone</span>
@@ -241,17 +285,18 @@ function renderContactDetail(c) {
   `;
 }
 
-function openEditContactDetail() {
+async function openEditContactDetail() {
   const c = _currentContact;
   document.getElementById('contactModalTitle').textContent = 'Edit Contact';
   document.getElementById('contactId').value   = c.id;
   document.getElementById('cfFirstName').value = c.first_name || '';
   document.getElementById('cfLastName').value  = c.last_name  || '';
-  document.getElementById('cfCompany').value   = c.company    || '';
   document.getElementById('cfTitle').value     = c.title      || '';
   document.getElementById('cfEmail').value     = c.email      || '';
   document.getElementById('cfPhone').value     = c.phone      || '';
   document.getElementById('cfNotes').value     = c.notes      || '';
+  await populateCompanyDropdown('cfCompanyId', c.company_id);
+  await populateContactDropdown('cfReportsTo', c.reports_to, c.id);
   openModal('contactModal');
 }
 
@@ -261,18 +306,18 @@ async function submitContactDetail(e) {
   const data = {
     first_name: document.getElementById('cfFirstName').value.trim(),
     last_name:  document.getElementById('cfLastName').value.trim(),
-    company:    document.getElementById('cfCompany').value.trim(),
+    company_id: document.getElementById('cfCompanyId').value || null,
+    reports_to: document.getElementById('cfReportsTo').value || null,
     title:      document.getElementById('cfTitle').value.trim(),
     email:      document.getElementById('cfEmail').value.trim(),
     phone:      document.getElementById('cfPhone').value.trim(),
     notes:      document.getElementById('cfNotes').value.trim(),
   };
   try {
-    const updated = await API.put(`/api/contacts/${id}`, data);
-    _currentContact = updated;
-    renderContactDetail(updated);
+    await API.put(`/api/contacts/${id}`, data);
     closeModal();
     showToast('Contact updated.');
+    loadContactDetail(id);
   } catch (e) { showToast('Save failed.'); }
 }
 

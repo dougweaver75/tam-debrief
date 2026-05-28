@@ -29,7 +29,7 @@
   </main>
 
   <!-- Modal backdrop (shared) -->
-  <div class="modal-backdrop" id="modalBackdrop" onclick="closeModal()"></div>
+  <div class="modal-backdrop" id="modalBackdrop" onclick="if(event.target===this)closeModal()"></div>
 
   <script src="/static/app.js"></script>
   {% block scripts %}{% endblock %}

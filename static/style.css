@@ -63,6 +63,7 @@ body {
   transition: background .15s, color .15s;
 }
 .nav-link:hover { background: rgba(255,255,255,.07); color: #fff; }
+.nav-link:focus-visible { outline: 2px solid rgba(255,255,255,.35); outline-offset: 2px; }
 .nav-link.active { background: rgba(255,255,255,.12); color: var(--sidebar-act); font-weight: 600; }
 
 /* ── Main content ──────────────────────────────────────────────────────── */

@@ -1,0 +1,51 @@
+{% extends 'base.html' %}
+{% block title %}Companies — CCRM{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1 class="page-title">Companies</h1>
+  <button class="btn btn-primary" onclick="openAddCompany()">+ Add Company</button>
+</div>
+
+<div class="card" style="padding:16px 20px">
+  <div class="search-bar">
+    <input id="companySearchInput" class="search-input" type="text"
+           placeholder="Search name or industry…"
+           oninput="debounceCompanySearch(this.value)">
+  </div>
+  <div class="table-wrap">
+    <table id="companiesTable">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Industry</th>
+          <th>Website</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="companiesBody">
+        <tr><td colspan="4" class="empty-state">Loading…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Add/Edit Company Modal -->
+<div class="modal" id="companyModal">
+  <div class="modal-title" id="companyModalTitle">Add Company</div>
+  <form id="companyForm" onsubmit="submitCompany(event)">
+    <input type="hidden" id="companyId">
+    <div class="form-row"><label>Name *</label><input type="text" id="coName" required></div>
+    <div class="form-row-2">
+      <div class="form-row"><label>Industry</label><input type="text" id="coIndustry"></div>
+      <div class="form-row"><label>Website</label><input type="url" id="coWebsite" placeholder="https://"></div>
+    </div>
+    <div class="form-row"><label>Address</label><input type="text" id="coAddress"></div>
+    <div class="form-row"><label>Notes</label><textarea id="coNotes"></textarea></div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button type="submit" class="btn btn-primary">Save</button>
+    </div>
+  </form>
+</div>
+{% endblock %}
+{% block scripts %}<script>initCompanies();</script>{% endblock %}

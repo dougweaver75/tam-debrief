@@ -83,6 +83,14 @@ def contacts_page():
 def contact_page(cid):
     return render_template('contact.html', contact_id=cid)
 
+@app.route('/companies')
+def companies_page():
+    return render_template('companies.html')
+
+@app.route('/companies/<int:coid>')
+def company_page(coid):
+    return render_template('company.html', company_id=coid)
+
 
 # ── API: contacts ────────────────────────────────────────────────────────────
 
@@ -114,13 +122,16 @@ def api_create_contact():
     if not first_name or not last_name:
         return jsonify({'error': 'first_name and last_name are required'}), 400
     ts  = now_iso()
+    company_id  = data.get('company_id') or None
+    reports_to  = data.get('reports_to') or None
     cur = execute(
-        'INSERT INTO contacts (first_name,last_name,company,title,email,phone,notes,created_at,updated_at) '
-        'VALUES (?,?,?,?,?,?,?,?,?)',
+        'INSERT INTO contacts (first_name,last_name,company,title,email,phone,notes,'
+        'company_id,reports_to,created_at,updated_at) '
+        'VALUES (?,?,?,?,?,?,?,?,?,?,?)',
         (first_name, last_name,
          data.get('company',''), data.get('title',''),
          data.get('email',''),   data.get('phone',''),
-         data.get('notes',''),   ts, ts)
+         data.get('notes',''),   company_id, reports_to, ts, ts)
     )
     return jsonify(as_dict(query('SELECT * FROM contacts WHERE id=?', (cur.lastrowid,), one=True))), 201
 
@@ -142,12 +153,15 @@ def api_update_contact(cid):
     last_name  = data.get('last_name', '').strip()
     if not first_name or not last_name:
         return jsonify({'error': 'first_name and last_name are required'}), 400
+    company_id = data.get('company_id') or None
+    reports_to = data.get('reports_to') or None
     execute(
-        'UPDATE contacts SET first_name=?,last_name=?,company=?,title=?,email=?,phone=?,notes=?,updated_at=? WHERE id=?',
+        'UPDATE contacts SET first_name=?,last_name=?,company=?,title=?,email=?,phone=?,notes=?,'
+        'company_id=?,reports_to=?,updated_at=? WHERE id=?',
         (first_name, last_name,
          data.get('company',''), data.get('title',''),
          data.get('email',''),   data.get('phone',''),
-         data.get('notes',''),   now_iso(), cid)
+         data.get('notes',''),   company_id, reports_to, now_iso(), cid)
     )
     return jsonify(as_dict(query('SELECT * FROM contacts WHERE id=?', (cid,), one=True)))
 
@@ -204,7 +218,72 @@ def api_delete_interaction(iid):
 
 @app.route('/api/companies', methods=['GET'])
 def api_list_companies():
-    rows = query('SELECT * FROM companies ORDER BY name ASC')
+    search = request.args.get('search', '').strip()
+    if search:
+        like = f'%{search}%'
+        rows = query(
+            'SELECT * FROM companies WHERE name LIKE ? OR industry LIKE ? ORDER BY name ASC',
+            (like, like)
+        )
+    else:
+        rows = query('SELECT * FROM companies ORDER BY name ASC')
+    return jsonify(as_list(rows))
+
+
+@app.route('/api/companies', methods=['POST'])
+def api_create_company():
+    data = request.get_json(force=True) or {}
+    name = data.get('name', '').strip()
+    if not name:
+        return jsonify({'error': 'name is required'}), 400
+    ts  = now_iso()
+    cur = execute(
+        'INSERT INTO companies (name,industry,website,address,notes,created_at,updated_at) '
+        'VALUES (?,?,?,?,?,?,?)',
+        (name, data.get('industry',''), data.get('website',''),
+         data.get('address',''), data.get('notes',''), ts, ts)
+    )
+    return jsonify(as_dict(query('SELECT * FROM companies WHERE id=?', (cur.lastrowid,), one=True))), 201
+
+
+@app.route('/api/companies/<int:coid>', methods=['GET'])
+def api_get_company(coid):
+    row = query('SELECT * FROM companies WHERE id=?', (coid,), one=True)
+    if not row:
+        return jsonify({'error': 'Not found'}), 404
+    return jsonify(as_dict(row))
+
+
+@app.route('/api/companies/<int:coid>', methods=['PUT'])
+def api_update_company(coid):
+    if not query('SELECT id FROM companies WHERE id=?', (coid,), one=True):
+        return jsonify({'error': 'Not found'}), 404
+    data = request.get_json(force=True) or {}
+    name = data.get('name', '').strip()
+    if not name:
+        return jsonify({'error': 'name is required'}), 400
+    execute(
+        'UPDATE companies SET name=?,industry=?,website=?,address=?,notes=?,updated_at=? WHERE id=?',
+        (name, data.get('industry',''), data.get('website',''),
+         data.get('address',''), data.get('notes',''), now_iso(), coid)
+    )
+    return jsonify(as_dict(query('SELECT * FROM companies WHERE id=?', (coid,), one=True)))
+
+
+@app.route('/api/companies/<int:coid>', methods=['DELETE'])
+def api_delete_company(coid):
+    cur = execute('DELETE FROM companies WHERE id=?', (coid,))
+    if cur.rowcount == 0:
+        return jsonify({'error': 'Not found'}), 404
+    return jsonify({'ok': True})
+
+
+@app.route('/api/companies/<int:coid>/contacts', methods=['GET'])
+def api_company_contacts(coid):
+    rows = query(
+        'SELECT * FROM contacts WHERE company_id=? ORDER BY last_name ASC, first_name ASC',
+        (coid,)
+    )
     return jsonify(as_list(rows))
 
 

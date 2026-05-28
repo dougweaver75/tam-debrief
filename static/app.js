@@ -340,6 +340,214 @@ async function deleteInteraction(id) {
   } catch (e) { showToast('Delete failed.'); }
 }
 
+// ── Companies List ─────────────────────────────────────────────────────────
+
+let _companySearchTimer = null;
+
+function initCompanies() {
+  loadCompanies();
+}
+
+async function loadCompanies(search = '') {
+  const params = new URLSearchParams();
+  if (search) params.set('search', search);
+  try {
+    const companies = await API.get('/api/companies?' + params);
+    renderCompanies(companies);
+  } catch (e) {
+    document.getElementById('companiesBody').innerHTML =
+      `<tr><td colspan="4" class="empty-state">Error loading companies.</td></tr>`;
+  }
+}
+
+function renderCompanies(companies) {
+  const tbody = document.getElementById('companiesBody');
+  if (!companies.length) {
+    tbody.innerHTML = `<tr><td colspan="4" class="empty-state">No companies yet.</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = companies.map(co => `
+    <tr>
+      <td><a href="/companies/${co.id}" class="table-link">${esc(co.name)}</a></td>
+      <td>${esc(co.industry) || '—'}</td>
+      <td>${co.website ? `<a href="${esc(co.website)}" target="_blank" rel="noopener">${esc(co.website)}</a>` : '—'}</td>
+      <td class="table-actions">
+        <button class="btn btn-secondary btn-sm" onclick="openEditCompany(${co.id})">Edit</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteCompany(${co.id})">Delete</button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+function debounceCompanySearch(val) {
+  clearTimeout(_companySearchTimer);
+  _companySearchTimer = setTimeout(() => loadCompanies(val), 300);
+}
+
+function openAddCompany() {
+  document.getElementById('companyModalTitle').textContent = 'Add Company';
+  document.getElementById('companyId').value = '';
+  document.getElementById('companyForm').reset();
+  openModal('companyModal');
+}
+
+async function openEditCompany(id) {
+  try {
+    const co = await API.get(`/api/companies/${id}`);
+    document.getElementById('companyModalTitle').textContent = 'Edit Company';
+    document.getElementById('companyId').value  = co.id;
+    document.getElementById('coName').value     = co.name     || '';
+    document.getElementById('coIndustry').value = co.industry || '';
+    document.getElementById('coWebsite').value  = co.website  || '';
+    document.getElementById('coAddress').value  = co.address  || '';
+    document.getElementById('coNotes').value    = co.notes    || '';
+    openModal('companyModal');
+  } catch (e) { showToast('Failed to load company.'); }
+}
+
+async function submitCompany(e) {
+  e.preventDefault();
+  const id   = document.getElementById('companyId').value;
+  const data = {
+    name:     document.getElementById('coName').value.trim(),
+    industry: document.getElementById('coIndustry').value.trim(),
+    website:  document.getElementById('coWebsite').value.trim(),
+    address:  document.getElementById('coAddress').value.trim(),
+    notes:    document.getElementById('coNotes').value.trim(),
+  };
+  try {
+    if (id) {
+      await API.put(`/api/companies/${id}`, data);
+      showToast('Company updated.');
+    } else {
+      await API.post('/api/companies', data);
+      showToast('Company added.');
+    }
+    closeModal();
+    loadCompanies(document.getElementById('companySearchInput')?.value || '');
+  } catch (e) { showToast('Save failed.'); }
+}
+
+async function deleteCompany(id) {
+  if (!confirm('Delete this company?')) return;
+  try {
+    await API.del(`/api/companies/${id}`);
+    showToast('Company deleted.');
+    loadCompanies(document.getElementById('companySearchInput')?.value || '');
+  } catch (e) { showToast('Delete failed.'); }
+}
+
+// ── Company Detail ─────────────────────────────────────────────────────────
+
+let _currentCompany = null;
+
+function initCompanyDetail(companyId) {
+  loadCompanyDetail(companyId);
+}
+
+async function loadCompanyDetail(companyId) {
+  try {
+    const [company, contacts] = await Promise.all([
+      API.get(`/api/companies/${companyId}`),
+      API.get(`/api/companies/${companyId}/contacts`)
+    ]);
+    _currentCompany = company;
+    renderCompanyDetail(company);
+    renderCompanyContacts(contacts);
+  } catch (e) {
+    document.getElementById('companyDetailRoot').innerHTML =
+      '<p class="empty-state">Company not found.</p>';
+  }
+}
+
+function renderCompanyDetail(co) {
+  document.getElementById('companyDetailRoot').innerHTML = `
+    <a href="/companies" class="back-link">← All Companies</a>
+    <div class="card">
+      <div class="contact-header">
+        <div>
+          <div class="contact-name">${esc(co.name)}</div>
+          <div class="contact-meta">${esc(co.industry) || ''}</div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-secondary btn-sm" onclick="openEditCompanyDetail()">Edit</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteCompanyDetail(${co.id})">Delete</button>
+        </div>
+      </div>
+      <div class="contact-fields">
+        <div class="field-row"><span class="field-label">Website</span>
+          <span class="field-value">${co.website ? `<a href="${esc(co.website)}" target="_blank" rel="noopener">${esc(co.website)}</a>` : '—'}</span></div>
+        <div class="field-row"><span class="field-label">Address</span>
+          <span class="field-value">${esc(co.address) || '—'}</span></div>
+        ${co.notes ? `<div class="field-row" style="grid-column:1/-1">
+          <span class="field-label">Notes</span>
+          <span class="field-value" style="white-space:pre-wrap">${esc(co.notes)}</span></div>` : ''}
+      </div>
+    </div>
+  `;
+}
+
+function renderCompanyContacts(contacts) {
+  const el = document.getElementById('companyContactsList');
+  if (!el) return;
+  if (!contacts.length) {
+    el.innerHTML = '<p class="empty-state">No contacts linked to this company.</p>';
+    return;
+  }
+  el.innerHTML = `<div class="table-wrap"><table>
+    <thead><tr><th>Name</th><th>Title</th><th>Email</th><th>Phone</th></tr></thead>
+    <tbody>
+    ${contacts.map(c => `
+      <tr>
+        <td><a href="/contacts/${c.id}" class="table-link">${esc(c.last_name)}, ${esc(c.first_name)}</a></td>
+        <td>${esc(c.title) || '—'}</td>
+        <td>${c.email ? `<a href="mailto:${esc(c.email)}">${esc(c.email)}</a>` : '—'}</td>
+        <td>${esc(c.phone) || '—'}</td>
+      </tr>
+    `).join('')}
+    </tbody>
+  </table></div>`;
+}
+
+function openEditCompanyDetail() {
+  const co = _currentCompany;
+  document.getElementById('companyModalTitle').textContent = 'Edit Company';
+  document.getElementById('companyId').value  = co.id;
+  document.getElementById('coName').value     = co.name     || '';
+  document.getElementById('coIndustry').value = co.industry || '';
+  document.getElementById('coWebsite').value  = co.website  || '';
+  document.getElementById('coAddress').value  = co.address  || '';
+  document.getElementById('coNotes').value    = co.notes    || '';
+  openModal('companyModal');
+}
+
+async function submitCompanyDetail(e) {
+  e.preventDefault();
+  const id   = document.getElementById('companyId').value;
+  const data = {
+    name:     document.getElementById('coName').value.trim(),
+    industry: document.getElementById('coIndustry').value.trim(),
+    website:  document.getElementById('coWebsite').value.trim(),
+    address:  document.getElementById('coAddress').value.trim(),
+    notes:    document.getElementById('coNotes').value.trim(),
+  };
+  try {
+    const updated = await API.put(`/api/companies/${id}`, data);
+    _currentCompany = updated;
+    renderCompanyDetail(updated);
+    closeModal();
+    showToast('Company updated.');
+  } catch (e) { showToast('Save failed.'); }
+}
+
+async function deleteCompanyDetail(id) {
+  if (!confirm('Delete this company?')) return;
+  try {
+    await API.del(`/api/companies/${id}`);
+    window.location.href = '/companies';
+  } catch (e) { showToast('Delete failed.'); }
+}
+
 // ── Dashboard ──────────────────────────────────────────────────────────────
 
 function initDashboard() {

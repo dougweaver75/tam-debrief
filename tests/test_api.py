@@ -129,3 +129,37 @@ def test_meetings_table_exists(client):
     r = client.get('/api/meetings')
     assert r.status_code == 200
     assert r.get_json() == []
+
+def test_create_company(client):
+    r = client.post('/api/companies', json={'name': 'Acme Corp', 'industry': 'Tech'})
+    assert r.status_code == 201
+    d = r.get_json()
+    assert d['name'] == 'Acme Corp'
+    assert d['industry'] == 'Tech'
+    assert d['id'] is not None
+
+def test_create_company_name_required(client):
+    r = client.post('/api/companies', json={'industry': 'Tech'})
+    assert r.status_code == 400
+
+def test_update_company(client):
+    r = client.post('/api/companies', json={'name': 'OldName'})
+    coid = r.get_json()['id']
+    r2 = client.put(f'/api/companies/{coid}', json={'name': 'NewName', 'website': 'https://newname.com'})
+    assert r2.status_code == 200
+    assert r2.get_json()['name'] == 'NewName'
+
+def test_delete_company(client):
+    r = client.post('/api/companies', json={'name': 'TempCo'})
+    coid = r.get_json()['id']
+    assert client.delete(f'/api/companies/{coid}').status_code == 200
+    assert client.get(f'/api/companies/{coid}').status_code == 404
+
+def test_company_contacts_list(client):
+    r_co = client.post('/api/companies', json={'name': 'BetaCorp'})
+    coid = r_co.get_json()['id']
+    client.post('/api/contacts', json={'first_name': 'Ann', 'last_name': 'Doe', 'company_id': coid})
+    r = client.get(f'/api/companies/{coid}/contacts')
+    assert r.status_code == 200
+    assert len(r.get_json()) == 1
+    assert r.get_json()[0]['first_name'] == 'Ann'

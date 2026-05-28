@@ -1,0 +1,39 @@
+{% extends 'base.html' %}
+{% block title %}Company — CCRM{% endblock %}
+{% block content %}
+<div id="companyDetailRoot">
+  <p class="empty-state">Loading…</p>
+</div>
+
+<div id="companyContactsSection" style="display:none">
+  <div class="card">
+    <div class="card-title">Contacts</div>
+    <div id="companyContactsList"></div>
+  </div>
+</div>
+
+<!-- Edit Company Modal -->
+<div class="modal" id="companyModal">
+  <div class="modal-title" id="companyModalTitle">Edit Company</div>
+  <form id="companyForm" onsubmit="submitCompanyDetail(event)">
+    <input type="hidden" id="companyId">
+    <div class="form-row"><label>Name *</label><input type="text" id="coName" required></div>
+    <div class="form-row-2">
+      <div class="form-row"><label>Industry</label><input type="text" id="coIndustry"></div>
+      <div class="form-row"><label>Website</label><input type="url" id="coWebsite" placeholder="https://"></div>
+    </div>
+    <div class="form-row"><label>Address</label><input type="text" id="coAddress"></div>
+    <div class="form-row"><label>Notes</label><textarea id="coNotes"></textarea></div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button type="submit" class="btn btn-primary">Save</button>
+    </div>
+  </form>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+  initCompanyDetail({{ company_id }});
+  document.getElementById('companyContactsSection').style.display = '';
+</script>
+{% endblock %}

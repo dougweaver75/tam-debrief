@@ -200,58 +200,6 @@ def api_delete_interaction(iid):
     return jsonify({'ok': True})
 
 
-# ── API: deals ───────────────────────────────────────────────────────────────
-
-@app.route('/api/contacts/<int:cid>/deals', methods=['GET'])
-def api_list_deals(cid):
-    rows = query('SELECT * FROM deals WHERE contact_id=? ORDER BY created_at DESC', (cid,))
-    return jsonify(as_list(rows))
-
-
-@app.route('/api/deals', methods=['POST'])
-def api_create_deal():
-    data = request.get_json(force=True) or {}
-    contact_id = data.get('contact_id')
-    title      = data.get('title', '').strip()
-    if not contact_id or not title:
-        return jsonify({'error': 'contact_id and title are required'}), 400
-    try:
-        ts  = now_iso()
-        cur = execute(
-            'INSERT INTO deals (contact_id,title,value,stage,notes,created_at,updated_at) VALUES (?,?,?,?,?,?,?)',
-            (contact_id, title,
-             float(data.get('value', 0)), data.get('stage', 'lead'),
-             data.get('notes', ''), ts, ts)
-        )
-    except sqlite3.IntegrityError as e:
-        return jsonify({'error': str(e)}), 400
-    return jsonify(as_dict(query('SELECT * FROM deals WHERE id=?', (cur.lastrowid,), one=True))), 201
-
-
-@app.route('/api/deals/<int:did>', methods=['PUT'])
-def api_update_deal(did):
-    if not query('SELECT id FROM deals WHERE id=?', (did,), one=True):
-        return jsonify({'error': 'Not found'}), 404
-    data = request.get_json(force=True) or {}
-    title = data.get('title', '').strip()
-    if not title:
-        return jsonify({'error': 'title is required'}), 400
-    execute(
-        'UPDATE deals SET title=?,value=?,stage=?,notes=?,updated_at=? WHERE id=?',
-        (title, float(data.get('value', 0)),
-         data.get('stage', 'lead'), data.get('notes', ''), now_iso(), did)
-    )
-    return jsonify(as_dict(query('SELECT * FROM deals WHERE id=?', (did,), one=True)))
-
-
-@app.route('/api/deals/<int:did>', methods=['DELETE'])
-def api_delete_deal(did):
-    cur = execute('DELETE FROM deals WHERE id=?', (did,))
-    if cur.rowcount == 0:
-        return jsonify({'error': 'Not found'}), 404
-    return jsonify({'ok': True})
-
-
 # ── API: companies ───────────────────────────────────────────────────────────
 
 @app.route('/api/companies', methods=['GET'])
@@ -272,22 +220,31 @@ def api_list_meetings():
 
 @app.route('/api/dashboard', methods=['GET'])
 def api_dashboard():
-    total  = query('SELECT COUNT(*) AS n FROM contacts', one=True)['n']
-    open_  = query(
-        "SELECT COUNT(*) AS cnt, COALESCE(SUM(value),0) AS total FROM deals "
-        "WHERE stage IN ('lead','qualified','proposal')",
-        one=True
-    )
-    recent = query(
+    total   = query('SELECT COUNT(*) AS n FROM contacts', one=True)['n']
+    meetings = query('SELECT COUNT(*) AS n FROM meetings', one=True)['n']
+    open_ai = query(
+        'SELECT COUNT(*) AS n FROM action_items WHERE completed=0', one=True
+    )['n']
+    recent  = query(
         'SELECT i.*, c.first_name, c.last_name FROM interactions i '
         'JOIN contacts c ON c.id=i.contact_id '
         'ORDER BY i.interaction_date DESC, i.created_at DESC LIMIT 10'
     )
+    action_items = query(
+        'SELECT a.*, c.first_name, c.last_name, m.title AS meeting_title '
+        'FROM action_items a '
+        'JOIN meetings m ON m.id=a.meeting_id '
+        'LEFT JOIN contacts c ON c.id=a.assigned_to '
+        'WHERE a.completed=0 '
+        'ORDER BY CASE WHEN a.due_date IS NULL THEN 1 ELSE 0 END ASC, a.due_date ASC '
+        'LIMIT 20'
+    )
     return jsonify({
-        'total_contacts':    total,
-        'open_deals_count':  open_['cnt'],
-        'open_deals_value':  open_['total'],
-        'recent_interactions': as_list(recent)
+        'total_contacts':       total,
+        'total_meetings':       meetings,
+        'open_action_items':    open_ai,
+        'recent_interactions':  as_list(recent),
+        'action_items':         as_list(action_items),
     })
 
 

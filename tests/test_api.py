@@ -27,7 +27,7 @@ def test_dashboard_empty(client):
     data = r.get_json()
     assert r.status_code == 200
     assert data['total_contacts'] == 0
-    assert data['open_deals_count'] == 0
+    assert data['open_action_items'] == 0
 
 def test_create_contact(client):
     r = client.post('/api/contacts', json={
@@ -93,38 +93,32 @@ def test_delete_interaction(client):
     r2 = client.get(f'/api/contacts/{cid}/interactions')
     assert r2.get_json() == []
 
-def test_create_and_update_deal(client):
-    cid = _make_contact(client)
-    r = client.post('/api/deals', json={'contact_id': cid, 'title': 'Pilot', 'value': 5000, 'stage': 'lead'})
-    assert r.status_code == 201
-    did = r.get_json()['id']
-    r2 = client.put(f'/api/deals/{did}', json={'title': 'Pilot', 'value': 7500, 'stage': 'qualified'})
-    assert r2.get_json()['stage'] == 'qualified'
 
 def test_delete_cascades(client):
     cid = _make_contact(client)
     client.post('/api/interactions', json={'contact_id': cid, 'type': 'call', 'summary': 'X', 'interaction_date': '2026-05-28'})
-    client.post('/api/deals', json={'contact_id': cid, 'title': 'Deal', 'value': 0, 'stage': 'lead'})
     r_del = client.delete(f'/api/contacts/{cid}')
     assert r_del.status_code == 200
     assert r_del.get_json()['ok'] is True
     r = client.get(f'/api/contacts/{cid}')
     assert r.status_code == 404
-    # verify cascade: interactions and deals removed
     assert client.get(f'/api/contacts/{cid}/interactions').get_json() == []
-    assert client.get(f'/api/contacts/{cid}/deals').get_json() == []
 
 def test_dashboard_stats(client):
     cid = _make_contact(client)
-    client.post('/api/deals', json={'contact_id': cid, 'title': 'A', 'value': 1000, 'stage': 'lead'})
-    client.post('/api/deals', json={'contact_id': cid, 'title': 'B', 'value': 2000, 'stage': 'closed-won'})
     client.post('/api/interactions', json={'contact_id': cid, 'type': 'call', 'summary': 'Hi', 'interaction_date': '2026-05-28'})
     r = client.get('/api/dashboard')
     d = r.get_json()
     assert d['total_contacts'] == 1
-    assert d['open_deals_count'] == 1   # only lead is open
-    assert d['open_deals_value'] == 1000
+    assert d['total_meetings'] == 0
+    assert d['open_action_items'] == 0
     assert len(d['recent_interactions']) == 1
+    assert d['action_items'] == []
+
+def test_deals_api_removed(client):
+    cid = _make_contact(client)
+    assert client.post('/api/deals', json={'contact_id': cid, 'title': 'X', 'value': 0, 'stage': 'lead'}).status_code == 404
+    assert client.get(f'/api/contacts/{cid}/deals').status_code == 404
 
 def test_companies_table_exists(client):
     r = client.get('/api/companies')

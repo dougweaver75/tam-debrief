@@ -46,11 +46,6 @@ function fmtDate(s) {
   return d.toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' });
 }
 
-function fmtMoney(v) {
-  if (v == null) return '—';
-  return new Intl.NumberFormat('en-US', { style:'currency', currency:'USD', maximumFractionDigits:0 }).format(v);
-}
-
 function badgeHtml(cls, text) {
   return `<span class="badge badge-${cls}">${text}</span>`;
 }
@@ -60,7 +55,6 @@ function esc(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 
-const STAGE_LABELS = { lead:'Lead', qualified:'Qualified', proposal:'Proposal', 'closed-won':'Closed Won', 'closed-lost':'Closed Lost' };
 const TYPE_LABELS  = { call:'Call', email:'Email', meeting:'Meeting', note:'Note' };
 
 // ── Contacts List ──────────────────────────────────────────────────────────
@@ -179,7 +173,7 @@ async function submitContact(e) {
 }
 
 async function deleteContact(id) {
-  if (!confirm('Delete this contact? This will also remove their interactions and deals.')) return;
+  if (!confirm('Delete this contact? This will also remove their interactions.')) return;
   try {
     await API.del(`/api/contacts/${id}`);
     showToast('Contact deleted.');
@@ -197,15 +191,13 @@ function initContactDetail(contactId) {
 
 async function loadContactDetail(contactId) {
   try {
-    const [contact, interactions, deals] = await Promise.all([
+    const [contact, interactions] = await Promise.all([
       API.get(`/api/contacts/${contactId}`),
-      API.get(`/api/contacts/${contactId}/interactions`),
-      API.get(`/api/contacts/${contactId}/deals`)
+      API.get(`/api/contacts/${contactId}/interactions`)
     ]);
     _currentContact = contact;
     renderContactDetail(contact);
     renderInteractions(interactions);
-    renderDeals(deals);
   } catch (e) {
     document.getElementById('contactDetailRoot').innerHTML =
       '<p class="empty-state">Contact not found.</p>';
@@ -285,7 +277,7 @@ async function submitContactDetail(e) {
 }
 
 async function deleteContactDetail(id) {
-  if (!confirm('Delete this contact and all their interactions and deals?')) return;
+  if (!confirm('Delete this contact and all their interactions?')) return;
   try {
     await API.del(`/api/contacts/${id}`);
     window.location.href = '/contacts';
@@ -348,89 +340,6 @@ async function deleteInteraction(id) {
   } catch (e) { showToast('Delete failed.'); }
 }
 
-// ── Deals ──────────────────────────────────────────────────────────────────
-
-function renderDeals(deals) {
-  const el = document.getElementById('dealsList');
-  if (!el) return;
-  if (!deals.length) {
-    el.innerHTML = '<p class="empty-state">No deals yet.</p>';
-    return;
-  }
-  el.innerHTML = deals.map(d => `
-    <div class="deal-item">
-      <div style="flex:1">
-        <div class="deal-title">${esc(d.title)}</div>
-        <div class="deal-meta">
-          ${badgeHtml(d.stage, STAGE_LABELS[d.stage] || d.stage)}
-          ${d.notes ? `<span style="margin-left:6px;color:var(--text-muted)">${esc(d.notes.slice(0,60))}${d.notes.length>60?'…':''}</span>` : ''}
-        </div>
-      </div>
-      <div style="display:flex;align-items:center;gap:8px">
-        <span class="deal-value">${fmtMoney(d.value)}</span>
-        <button class="btn btn-secondary btn-sm" onclick="openEditDeal(${d.id})">Edit</button>
-        <button class="btn btn-danger btn-sm" onclick="deleteDeal(${d.id})">✕</button>
-      </div>
-    </div>
-  `).join('');
-}
-
-function openAddDeal() {
-  document.getElementById('dealModalTitle').textContent = 'Add Deal';
-  document.getElementById('dealId').value = '';
-  document.getElementById('dealForm').reset();
-  openModal('dealModal');
-}
-
-async function openEditDeal(did) {
-  try {
-    const deals = await API.get(`/api/contacts/${_currentContact.id}/deals`);
-    const d = deals.find(x => x.id === did);
-    if (!d) return;
-    document.getElementById('dealModalTitle').textContent = 'Edit Deal';
-    document.getElementById('dealId').value     = d.id;
-    document.getElementById('dTitle').value     = d.title   || '';
-    document.getElementById('dValue').value     = d.value   || 0;
-    document.getElementById('dStage').value     = d.stage   || 'lead';
-    document.getElementById('dNotes').value     = d.notes   || '';
-    openModal('dealModal');
-  } catch (e) { showToast('Failed to load deal.'); }
-}
-
-async function submitDeal(e) {
-  e.preventDefault();
-  const id   = document.getElementById('dealId').value;
-  const data = {
-    contact_id: _currentContact.id,
-    title:  document.getElementById('dTitle').value.trim(),
-    value:  parseFloat(document.getElementById('dValue').value) || 0,
-    stage:  document.getElementById('dStage').value,
-    notes:  document.getElementById('dNotes').value.trim(),
-  };
-  try {
-    if (id) {
-      await API.put(`/api/deals/${id}`, data);
-      showToast('Deal updated.');
-    } else {
-      await API.post('/api/deals', data);
-      showToast('Deal added.');
-    }
-    closeModal();
-    const deals = await API.get(`/api/contacts/${_currentContact.id}/deals`);
-    renderDeals(deals);
-  } catch (e) { showToast('Save failed.'); }
-}
-
-async function deleteDeal(did) {
-  if (!confirm('Delete this deal?')) return;
-  try {
-    await API.del(`/api/deals/${did}`);
-    showToast('Deal deleted.');
-    const deals = await API.get(`/api/contacts/${_currentContact.id}/deals`);
-    renderDeals(deals);
-  } catch (e) { showToast('Delete failed.'); }
-}
-
 // ── Dashboard ──────────────────────────────────────────────────────────────
 
 function initDashboard() {
@@ -448,8 +357,6 @@ async function loadDashboard() {
 
 function renderDashboard(data) {
   document.getElementById('statContacts').textContent = data.total_contacts;
-  document.getElementById('statDealsCount').textContent = data.open_deals_count;
-  document.getElementById('statDealsValue').textContent = fmtMoney(data.open_deals_value);
 
   const el = document.getElementById('recentList');
   if (!data.recent_interactions.length) {

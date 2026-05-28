@@ -55,6 +55,11 @@ function badgeHtml(cls, text) {
   return `<span class="badge badge-${cls}">${text}</span>`;
 }
 
+function esc(s) {
+  if (s == null) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
 const STAGE_LABELS = { lead:'Lead', qualified:'Qualified', proposal:'Proposal', 'closed-won':'Closed Won', 'closed-lost':'Closed Lost' };
 const TYPE_LABELS  = { call:'Call', email:'Email', meeting:'Meeting', note:'Note' };
 
@@ -87,14 +92,14 @@ function renderContacts(contacts) {
   }
   tbody.innerHTML = contacts.map(c => `
     <tr>
-      <td><a href="/contacts/${c.id}" class="table-link">${c.last_name}, ${c.first_name}</a></td>
-      <td>${c.company || '—'}</td>
-      <td>${c.email ? `<a href="mailto:${c.email}">${c.email}</a>` : '—'}</td>
-      <td>${c.phone || '—'}</td>
+      <td><a href="/contacts/${c.id}" class="table-link">${esc(c.last_name)}, ${esc(c.first_name)}</a></td>
+      <td>${esc(c.company) || '—'}</td>
+      <td>${c.email ? `<a href="mailto:${esc(c.email)}">${esc(c.email)}</a>` : '—'}</td>
+      <td>${esc(c.phone) || '—'}</td>
       <td>${fmtDate(c.created_at)}</td>
       <td class="table-actions">
         <button class="btn btn-secondary btn-sm" onclick="openEditContact(${c.id})">Edit</button>
-        <button class="btn btn-danger btn-sm" onclick="deleteContact(${c.id}, '${c.first_name} ${c.last_name}')">Delete</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteContact(${c.id})">Delete</button>
       </td>
     </tr>
   `).join('');
@@ -173,8 +178,8 @@ async function submitContact(e) {
   } catch (e) { showToast('Save failed.'); }
 }
 
-async function deleteContact(id, name) {
-  if (!confirm(`Delete ${name}? This will also remove their interactions and deals.`)) return;
+async function deleteContact(id) {
+  if (!confirm('Delete this contact? This will also remove their interactions and deals.')) return;
   try {
     await API.del(`/api/contacts/${id}`);
     showToast('Contact deleted.');
@@ -208,16 +213,18 @@ async function loadContactDetail(contactId) {
 }
 
 function renderContactDetail(c) {
-  const initials = (c.first_name[0] || '') + (c.last_name[0] || '');
+  const fn = c.first_name || '';
+  const ln = c.last_name  || '';
+  const initials = ((fn[0] || '') + (ln[0] || '')).toUpperCase();
   document.getElementById('contactDetailRoot').innerHTML = `
     <a href="/contacts" class="back-link">← All Contacts</a>
     <div class="card">
       <div class="contact-header">
         <div style="display:flex;gap:14px;align-items:flex-start">
-          <div class="contact-avatar">${initials.toUpperCase()}</div>
+          <div class="contact-avatar">${esc(initials)}</div>
           <div>
-            <div class="contact-name">${c.first_name} ${c.last_name}</div>
-            <div class="contact-meta">${[c.title, c.company].filter(Boolean).join(' · ')}</div>
+            <div class="contact-name">${esc(fn)} ${esc(ln)}</div>
+            <div class="contact-meta">${esc([c.title, c.company].filter(Boolean).join(' · '))}</div>
           </div>
         </div>
         <div style="display:flex;gap:8px">
@@ -227,16 +234,16 @@ function renderContactDetail(c) {
       </div>
       <div class="contact-fields">
         <div class="field-row"><span class="field-label">Email</span>
-          <span class="field-value">${c.email ? `<a href="mailto:${c.email}">${c.email}</a>` : '—'}</span></div>
+          <span class="field-value">${c.email ? `<a href="mailto:${esc(c.email)}">${esc(c.email)}</a>` : '—'}</span></div>
         <div class="field-row"><span class="field-label">Phone</span>
-          <span class="field-value">${c.phone || '—'}</span></div>
+          <span class="field-value">${esc(c.phone) || '—'}</span></div>
         <div class="field-row"><span class="field-label">Added</span>
           <span class="field-value">${fmtDate(c.created_at)}</span></div>
         <div class="field-row"><span class="field-label">Updated</span>
           <span class="field-value">${fmtDate(c.updated_at)}</span></div>
         ${c.notes ? `<div class="field-row" style="grid-column:1/-1">
           <span class="field-label">Notes</span>
-          <span class="field-value" style="white-space:pre-wrap">${c.notes}</span></div>` : ''}
+          <span class="field-value" style="white-space:pre-wrap">${esc(c.notes)}</span></div>` : ''}
       </div>
     </div>
   `;
@@ -301,7 +308,7 @@ function renderInteractions(interactions) {
           ${badgeHtml(i.type, TYPE_LABELS[i.type] || i.type)}
           <span class="interaction-date">${fmtDate(i.interaction_date)}</span>
         </div>
-        <div class="interaction-summary">${i.summary}</div>
+        <div class="interaction-summary">${esc(i.summary)}</div>
       </div>
       <button class="btn btn-danger btn-sm" onclick="deleteInteraction(${i.id})">✕</button>
     </div>
@@ -309,7 +316,6 @@ function renderInteractions(interactions) {
 }
 
 function openLogInteraction() {
-  document.getElementById('iDate').value = new Date().toISOString().slice(0,10);
   document.getElementById('interactionForm').reset();
   document.getElementById('iDate').value = new Date().toISOString().slice(0,10);
   openModal('interactionModal');
@@ -354,10 +360,10 @@ function renderDeals(deals) {
   el.innerHTML = deals.map(d => `
     <div class="deal-item">
       <div style="flex:1">
-        <div class="deal-title">${d.title}</div>
+        <div class="deal-title">${esc(d.title)}</div>
         <div class="deal-meta">
           ${badgeHtml(d.stage, STAGE_LABELS[d.stage] || d.stage)}
-          ${d.notes ? `<span style="margin-left:6px;color:var(--text-muted)">${d.notes.slice(0,60)}${d.notes.length>60?'…':''}</span>` : ''}
+          ${d.notes ? `<span style="margin-left:6px;color:var(--text-muted)">${esc(d.notes.slice(0,60))}${d.notes.length>60?'…':''}</span>` : ''}
         </div>
       </div>
       <div style="display:flex;align-items:center;gap:8px">
@@ -455,10 +461,10 @@ function renderDashboard(data) {
       <div style="flex:1">
         <div style="display:flex;align-items:center;gap:8px">
           ${badgeHtml(i.type, TYPE_LABELS[i.type] || i.type)}
-          <a href="/contacts/${i.contact_id}" class="table-link">${i.first_name} ${i.last_name}</a>
+          <a href="/contacts/${i.contact_id}" class="table-link">${esc(i.first_name)} ${esc(i.last_name)}</a>
           <span class="interaction-date">${fmtDate(i.interaction_date)}</span>
         </div>
-        <div class="interaction-summary">${i.summary}</div>
+        <div class="interaction-summary">${esc(i.summary)}</div>
       </div>
     </div>
   `).join('');

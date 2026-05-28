@@ -385,6 +385,242 @@ async function deleteInteraction(id) {
   } catch (e) { showToast('Delete failed.'); }
 }
 
+// ── Meetings List ──────────────────────────────────────────────────────────
+
+function initMeetings() {
+  loadMeetings();
+}
+
+async function loadMeetings() {
+  try {
+    const meetings = await API.get('/api/meetings');
+    renderMeetings(meetings);
+  } catch (e) {
+    document.getElementById('meetingsBody').innerHTML =
+      `<tr><td colspan="4" class="empty-state">Error loading meetings.</td></tr>`;
+  }
+}
+
+function renderMeetings(meetings) {
+  const tbody = document.getElementById('meetingsBody');
+  if (!meetings.length) {
+    tbody.innerHTML = `<tr><td colspan="4" class="empty-state">No meetings yet.</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = meetings.map(m => `
+    <tr>
+      <td><a href="/meetings/${m.id}" class="table-link">${esc(m.title)}</a></td>
+      <td>${fmtDate(m.meeting_date)}</td>
+      <td>${m.company_name ? esc(m.company_name) : '—'}</td>
+      <td class="table-actions">
+        <button class="btn btn-secondary btn-sm" onclick="openEditMeeting(${m.id})">Edit</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteMeeting(${m.id})">Delete</button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+async function openAddMeeting() {
+  document.getElementById('meetingModalTitle').textContent = 'Add Meeting';
+  document.getElementById('meetingId').value = '';
+  document.getElementById('meetingForm').reset();
+  document.getElementById('mDate').value = new Date().toISOString().slice(0, 10);
+  await populateCompanyDropdown('mCompanyId', null);
+  openModal('meetingModal');
+}
+
+async function openEditMeeting(id) {
+  try {
+    const m = await API.get(`/api/meetings/${id}`);
+    document.getElementById('meetingModalTitle').textContent = 'Edit Meeting';
+    document.getElementById('meetingId').value  = m.id;
+    document.getElementById('mTitle').value     = m.title        || '';
+    document.getElementById('mDate').value      = m.meeting_date || '';
+    document.getElementById('mNotes').value     = m.notes        || '';
+    await populateCompanyDropdown('mCompanyId', m.company_id);
+    openModal('meetingModal');
+  } catch (e) { showToast('Failed to load meeting.'); }
+}
+
+async function submitMeeting(e) {
+  e.preventDefault();
+  const id   = document.getElementById('meetingId').value;
+  const data = {
+    title:        document.getElementById('mTitle').value.trim(),
+    meeting_date: document.getElementById('mDate').value,
+    company_id:   document.getElementById('mCompanyId').value || null,
+    notes:        document.getElementById('mNotes').value.trim(),
+  };
+  try {
+    if (id) {
+      await API.put(`/api/meetings/${id}`, data);
+      showToast('Meeting updated.');
+    } else {
+      await API.post('/api/meetings', data);
+      showToast('Meeting added.');
+    }
+    closeModal();
+    loadMeetings();
+  } catch (e) { showToast('Save failed.'); }
+}
+
+async function deleteMeeting(id) {
+  if (!confirm('Delete this meeting and all its action items?')) return;
+  try {
+    await API.del(`/api/meetings/${id}`);
+    showToast('Meeting deleted.');
+    loadMeetings();
+  } catch (e) { showToast('Delete failed.'); }
+}
+
+// ── Meeting Detail ─────────────────────────────────────────────────────────
+
+let _currentMeeting = null;
+
+function initMeetingDetail(meetingId) {
+  loadMeetingDetail(meetingId);
+}
+
+async function loadMeetingDetail(meetingId) {
+  try {
+    const [meeting, attendees] = await Promise.all([
+      API.get(`/api/meetings/${meetingId}`),
+      API.get(`/api/meetings/${meetingId}/attendees`)
+    ]);
+    _currentMeeting = meeting;
+    renderMeetingDetail(meeting);
+    await renderAttendeesWithDropdown(meetingId, attendees);
+    // Action items loaded separately (endpoint added in Task 6)
+    try {
+      const actionItems = await API.get(`/api/meetings/${meetingId}/action_items`);
+      renderActionItems(actionItems);
+    } catch (e) {
+      const el = document.getElementById('actionItemsList');
+      if (el) el.innerHTML = '<p class="empty-state">No action items yet.</p>';
+    }
+  } catch (e) {
+    document.getElementById('meetingDetailRoot').innerHTML =
+      '<p class="empty-state">Meeting not found.</p>';
+  }
+}
+
+function renderMeetingDetail(m) {
+  document.getElementById('meetingDetailRoot').innerHTML = `
+    <a href="/meetings" class="back-link">← All Meetings</a>
+    <div class="card">
+      <div class="contact-header">
+        <div>
+          <div class="contact-name">${esc(m.title)}</div>
+          <div class="contact-meta">${fmtDate(m.meeting_date)}${m.company_name ? ' · ' + esc(m.company_name) : ''}</div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-secondary btn-sm" onclick="openEditMeetingDetail()">Edit</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteMeetingDetail(${m.id})">Delete</button>
+        </div>
+      </div>
+      ${m.notes ? `<div class="contact-fields">
+        <div class="field-row" style="grid-column:1/-1">
+          <span class="field-label">Notes</span>
+          <span class="field-value" style="white-space:pre-wrap">${esc(m.notes)}</span>
+        </div>
+      </div>` : ''}
+    </div>
+  `;
+}
+
+async function renderAttendeesWithDropdown(meetingId, attendees) {
+  const attending_ids = new Set(attendees.map(a => a.id));
+  try {
+    const all = await API.get('/api/contacts');
+    const available = all.filter(c => !attending_ids.has(c.id));
+    const sel = document.getElementById('attendeeSelect');
+    if (sel) {
+      sel.innerHTML = '<option value="">— Add attendee —</option>' +
+        available.map(c => `<option value="${c.id}">${esc(c.last_name)}, ${esc(c.first_name)}</option>`).join('');
+    }
+  } catch (e) {}
+
+  const el = document.getElementById('attendeesList');
+  if (!el) return;
+  if (!attendees.length) {
+    el.innerHTML = '<p class="empty-state">No attendees yet.</p>';
+    return;
+  }
+  el.innerHTML = attendees.map(c => `
+    <div class="interaction-item">
+      <div style="flex:1">
+        <a href="/contacts/${c.id}" class="table-link">${esc(c.last_name)}, ${esc(c.first_name)}</a>
+        ${c.title ? `<span style="color:var(--text-muted);margin-left:8px">${esc(c.title)}</span>` : ''}
+      </div>
+      <button class="btn btn-danger btn-sm" onclick="removeAttendee(${c.id})">✕</button>
+    </div>
+  `).join('');
+}
+
+async function addAttendee() {
+  const sel = document.getElementById('attendeeSelect');
+  const contact_id = sel?.value;
+  if (!contact_id) return;
+  try {
+    await API.post(`/api/meetings/${_currentMeeting.id}/attendees`, { contact_id: parseInt(contact_id) });
+    showToast('Attendee added.');
+    const attendees = await API.get(`/api/meetings/${_currentMeeting.id}/attendees`);
+    await renderAttendeesWithDropdown(_currentMeeting.id, attendees);
+  } catch (e) { showToast('Failed to add attendee.'); }
+}
+
+async function removeAttendee(contactId) {
+  try {
+    await API.del(`/api/meetings/${_currentMeeting.id}/attendees/${contactId}`);
+    showToast('Attendee removed.');
+    const attendees = await API.get(`/api/meetings/${_currentMeeting.id}/attendees`);
+    await renderAttendeesWithDropdown(_currentMeeting.id, attendees);
+  } catch (e) { showToast('Failed to remove attendee.'); }
+}
+
+function openEditMeetingDetail() {
+  const m = _currentMeeting;
+  document.getElementById('meetingModalTitle').textContent = 'Edit Meeting';
+  document.getElementById('meetingId').value  = m.id;
+  document.getElementById('mTitle').value     = m.title        || '';
+  document.getElementById('mDate').value      = m.meeting_date || '';
+  document.getElementById('mNotes').value     = m.notes        || '';
+  populateCompanyDropdown('mCompanyId', m.company_id);
+  openModal('meetingModal');
+}
+
+async function submitMeetingDetail(e) {
+  e.preventDefault();
+  const id   = document.getElementById('meetingId').value;
+  const data = {
+    title:        document.getElementById('mTitle').value.trim(),
+    meeting_date: document.getElementById('mDate').value,
+    company_id:   document.getElementById('mCompanyId').value || null,
+    notes:        document.getElementById('mNotes').value.trim(),
+  };
+  try {
+    const updated = await API.put(`/api/meetings/${id}`, data);
+    _currentMeeting = updated;
+    renderMeetingDetail(updated);
+    closeModal();
+    showToast('Meeting updated.');
+  } catch (e) { showToast('Save failed.'); }
+}
+
+async function deleteMeetingDetail(id) {
+  if (!confirm('Delete this meeting and all its action items?')) return;
+  try {
+    await API.del(`/api/meetings/${id}`);
+    window.location.href = '/meetings';
+  } catch (e) { showToast('Delete failed.'); }
+}
+
+// Stub for Task 6 — will be replaced by full action items implementation
+function renderActionItems(items) {
+  const el = document.getElementById('actionItemsList');
+  if (el) el.innerHTML = '<p class="empty-state">No action items yet.</p>';
+}
+
 // ── Companies List ─────────────────────────────────────────────────────────
 
 let _companySearchTimer = null;

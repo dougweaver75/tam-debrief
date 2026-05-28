@@ -91,6 +91,14 @@ def companies_page():
 def company_page(coid):
     return render_template('company.html', company_id=coid)
 
+@app.route('/meetings')
+def meetings_page():
+    return render_template('meetings.html')
+
+@app.route('/meetings/<int:mid>')
+def meeting_page(mid):
+    return render_template('meeting.html', meeting_id=mid)
+
 
 # ── API: contacts ────────────────────────────────────────────────────────────
 
@@ -293,8 +301,98 @@ def api_company_contacts(coid):
 
 @app.route('/api/meetings', methods=['GET'])
 def api_list_meetings():
-    rows = query('SELECT * FROM meetings ORDER BY meeting_date DESC')
+    rows = query(
+        'SELECT m.*, co.name AS company_name FROM meetings m '
+        'LEFT JOIN companies co ON co.id=m.company_id '
+        'ORDER BY m.meeting_date DESC'
+    )
     return jsonify(as_list(rows))
+
+
+@app.route('/api/meetings', methods=['POST'])
+def api_create_meeting():
+    data = request.get_json(force=True) or {}
+    title = data.get('title', '').strip()
+    mdate = data.get('meeting_date', '').strip()
+    if not title or not mdate:
+        return jsonify({'error': 'title and meeting_date are required'}), 400
+    ts  = now_iso()
+    cur = execute(
+        'INSERT INTO meetings (title,meeting_date,company_id,notes,created_at,updated_at) VALUES (?,?,?,?,?,?)',
+        (title, mdate, data.get('company_id') or None, data.get('notes',''), ts, ts)
+    )
+    return jsonify(as_dict(query('SELECT * FROM meetings WHERE id=?', (cur.lastrowid,), one=True))), 201
+
+
+@app.route('/api/meetings/<int:mid>', methods=['GET'])
+def api_get_meeting(mid):
+    row = query(
+        'SELECT m.*, co.name AS company_name FROM meetings m '
+        'LEFT JOIN companies co ON co.id=m.company_id WHERE m.id=?',
+        (mid,), one=True
+    )
+    if not row:
+        return jsonify({'error': 'Not found'}), 404
+    return jsonify(as_dict(row))
+
+
+@app.route('/api/meetings/<int:mid>', methods=['PUT'])
+def api_update_meeting(mid):
+    if not query('SELECT id FROM meetings WHERE id=?', (mid,), one=True):
+        return jsonify({'error': 'Not found'}), 404
+    data = request.get_json(force=True) or {}
+    title = data.get('title', '').strip()
+    mdate = data.get('meeting_date', '').strip()
+    if not title or not mdate:
+        return jsonify({'error': 'title and meeting_date are required'}), 400
+    execute(
+        'UPDATE meetings SET title=?,meeting_date=?,company_id=?,notes=?,updated_at=? WHERE id=?',
+        (title, mdate, data.get('company_id') or None, data.get('notes',''), now_iso(), mid)
+    )
+    return jsonify(as_dict(query('SELECT * FROM meetings WHERE id=?', (mid,), one=True)))
+
+
+@app.route('/api/meetings/<int:mid>', methods=['DELETE'])
+def api_delete_meeting(mid):
+    cur = execute('DELETE FROM meetings WHERE id=?', (mid,))
+    if cur.rowcount == 0:
+        return jsonify({'error': 'Not found'}), 404
+    return jsonify({'ok': True})
+
+
+@app.route('/api/meetings/<int:mid>/attendees', methods=['GET'])
+def api_list_attendees(mid):
+    rows = query(
+        'SELECT c.* FROM contacts c '
+        'JOIN meeting_attendees ma ON ma.contact_id=c.id '
+        'WHERE ma.meeting_id=? ORDER BY c.last_name ASC, c.first_name ASC',
+        (mid,)
+    )
+    return jsonify(as_list(rows))
+
+
+@app.route('/api/meetings/<int:mid>/attendees', methods=['POST'])
+def api_add_attendee(mid):
+    if not query('SELECT id FROM meetings WHERE id=?', (mid,), one=True):
+        return jsonify({'error': 'Meeting not found'}), 404
+    data = request.get_json(force=True) or {}
+    contact_id = data.get('contact_id')
+    if not contact_id:
+        return jsonify({'error': 'contact_id is required'}), 400
+    try:
+        execute('INSERT OR IGNORE INTO meeting_attendees (meeting_id, contact_id) VALUES (?,?)',
+                (mid, contact_id))
+    except sqlite3.IntegrityError as e:
+        return jsonify({'error': str(e)}), 400
+    return jsonify({'ok': True}), 201
+
+
+@app.route('/api/meetings/<int:mid>/attendees/<int:cid>', methods=['DELETE'])
+def api_remove_attendee(mid, cid):
+    cur = execute('DELETE FROM meeting_attendees WHERE meeting_id=? AND contact_id=?', (mid, cid))
+    if cur.rowcount == 0:
+        return jsonify({'error': 'Not found'}), 404
+    return jsonify({'ok': True})
 
 
 # ── API: dashboard ───────────────────────────────────────────────────────────

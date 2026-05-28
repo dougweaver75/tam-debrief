@@ -175,3 +175,40 @@ def test_contact_with_company_id(client):
     contacts = client.get(f'/api/companies/{coid}/contacts').get_json()
     assert len(contacts) == 1
     assert contacts[0]['first_name'] == 'John'
+
+
+def test_create_meeting(client):
+    r = client.post('/api/meetings', json={'title': 'Kickoff', 'meeting_date': '2026-06-01'})
+    assert r.status_code == 201
+    d = r.get_json()
+    assert d['title'] == 'Kickoff'
+    assert d['id'] is not None
+
+def test_create_meeting_required_fields(client):
+    assert client.post('/api/meetings', json={'meeting_date': '2026-06-01'}).status_code == 400
+    assert client.post('/api/meetings', json={'title': 'X'}).status_code == 400
+
+def test_update_meeting(client):
+    r = client.post('/api/meetings', json={'title': 'Draft', 'meeting_date': '2026-06-01'})
+    mid = r.get_json()['id']
+    r2 = client.put(f'/api/meetings/{mid}', json={'title': 'Final', 'meeting_date': '2026-06-02'})
+    assert r2.status_code == 200
+    assert r2.get_json()['title'] == 'Final'
+
+def test_delete_meeting(client):
+    r = client.post('/api/meetings', json={'title': 'TempMeet', 'meeting_date': '2026-06-01'})
+    mid = r.get_json()['id']
+    assert client.delete(f'/api/meetings/{mid}').status_code == 200
+    assert client.get(f'/api/meetings/{mid}').status_code == 404
+
+def test_meeting_attendees(client):
+    cid = _make_contact(client)
+    r = client.post('/api/meetings', json={'title': 'Demo', 'meeting_date': '2026-06-01'})
+    mid = r.get_json()['id']
+    r_add = client.post(f'/api/meetings/{mid}/attendees', json={'contact_id': cid})
+    assert r_add.status_code == 201
+    attendees = client.get(f'/api/meetings/{mid}/attendees').get_json()
+    assert len(attendees) == 1
+    assert attendees[0]['id'] == cid
+    assert client.delete(f'/api/meetings/{mid}/attendees/{cid}').status_code == 200
+    assert client.get(f'/api/meetings/{mid}/attendees').get_json() == []

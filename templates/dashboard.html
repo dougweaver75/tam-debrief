@@ -1,0 +1,30 @@
+{% extends 'base.html' %}
+{% block title %}Dashboard — CCRM{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1 class="page-title">Dashboard</h1>
+</div>
+
+<div class="stat-grid">
+  <div class="stat-card">
+    <div class="stat-label">Total Contacts</div>
+    <div class="stat-value" id="statContacts">—</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Open Deals</div>
+    <div class="stat-value" id="statDealsCount">—</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Open Pipeline</div>
+    <div class="stat-value" id="statDealsValue">—</div>
+  </div>
+</div>
+
+<div id="dashRoot">
+  <div class="card">
+    <div class="card-title">Recent Interactions</div>
+    <div id="recentList"><p class="empty-state">Loading…</p></div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}<script>initDashboard();</script>{% endblock %}

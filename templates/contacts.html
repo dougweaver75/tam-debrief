@@ -1,0 +1,80 @@
+{% extends 'base.html' %}
+{% block title %}Contacts — CCRM{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1 class="page-title">Contacts</h1>
+  <button class="btn btn-primary" onclick="openAddContact()">+ Add Contact</button>
+</div>
+
+<div class="card" style="padding:16px 20px">
+  <div class="search-bar">
+    <input id="searchInput" class="search-input" type="text"
+           placeholder="Search name, company, email…"
+           oninput="debounceSearch(this.value)">
+  </div>
+  <div class="table-wrap">
+    <table id="contactsTable">
+      <thead>
+        <tr>
+          <th onclick="sortBy('last_name')">Name <span class="sort-arrow" id="sort_last_name"></span></th>
+          <th onclick="sortBy('company')">Company <span class="sort-arrow" id="sort_company"></span></th>
+          <th onclick="sortBy('email')">Email <span class="sort-arrow" id="sort_email"></span></th>
+          <th>Phone</th>
+          <th onclick="sortBy('created_at')">Added <span class="sort-arrow" id="sort_created_at"></span></th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="contactsBody">
+        <tr><td colspan="6" class="empty-state">Loading…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Add/Edit Contact Modal -->
+<div class="modal" id="contactModal">
+  <div class="modal-title" id="contactModalTitle">Add Contact</div>
+  <form id="contactForm" onsubmit="submitContact(event)">
+    <input type="hidden" id="contactId">
+    <div class="form-row-2">
+      <div class="form-row">
+        <label>First Name *</label>
+        <input type="text" id="cfFirstName" required>
+      </div>
+      <div class="form-row">
+        <label>Last Name *</label>
+        <input type="text" id="cfLastName" required>
+      </div>
+    </div>
+    <div class="form-row-2">
+      <div class="form-row">
+        <label>Company</label>
+        <input type="text" id="cfCompany">
+      </div>
+      <div class="form-row">
+        <label>Title</label>
+        <input type="text" id="cfTitle">
+      </div>
+    </div>
+    <div class="form-row-2">
+      <div class="form-row">
+        <label>Email</label>
+        <input type="email" id="cfEmail">
+      </div>
+      <div class="form-row">
+        <label>Phone</label>
+        <input type="tel" id="cfPhone">
+      </div>
+    </div>
+    <div class="form-row">
+      <label>Notes</label>
+      <textarea id="cfNotes"></textarea>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button type="submit" class="btn btn-primary" id="contactSubmitBtn">Save</button>
+    </div>
+  </form>
+</div>
+{% endblock %}
+{% block scripts %}<script>initContacts();</script>{% endblock %}

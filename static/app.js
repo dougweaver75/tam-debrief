@@ -113,7 +113,7 @@ function renderContacts(contacts) {
   tbody.innerHTML = contacts.map(c => `
     <tr>
       <td><a href="/contacts/${c.id}" class="table-link">${esc(c.last_name)}, ${esc(c.first_name)}</a></td>
-      <td>${esc(c.company) || '—'}</td>
+      <td>${esc(c.company_name || c.company) || '—'}</td>
       <td>${c.email ? `<a href="mailto:${esc(c.email)}">${esc(c.email)}</a>` : '—'}</td>
       <td>${esc(c.phone) || '—'}</td>
       <td>${fmtDate(c.created_at)}</td>
@@ -572,14 +572,14 @@ async function removeAttendee(contactId) {
   } catch (e) { showToast('Failed to remove attendee.'); }
 }
 
-function openEditMeetingDetail() {
+async function openEditMeetingDetail() {
   const m = _currentMeeting;
   document.getElementById('meetingModalTitle').textContent = 'Edit Meeting';
   document.getElementById('meetingId').value  = m.id;
   document.getElementById('mTitle').value     = m.title        || '';
   document.getElementById('mDate').value      = m.meeting_date || '';
   document.getElementById('mNotes').value     = m.notes        || '';
-  populateCompanyDropdown('mCompanyId', m.company_id);
+  await populateCompanyDropdown('mCompanyId', m.company_id);
   openModal('meetingModal');
 }
 

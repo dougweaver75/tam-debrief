@@ -60,7 +60,7 @@ def migrate_db():
     if 'company_id' not in cols:
         db.execute("ALTER TABLE contacts ADD COLUMN company_id INTEGER REFERENCES companies(id) ON DELETE SET NULL")
     if 'reports_to' not in cols:
-        db.execute("ALTER TABLE contacts ADD COLUMN reports_to INTEGER")
+        db.execute("ALTER TABLE contacts ADD COLUMN reports_to INTEGER REFERENCES contacts(id) ON DELETE SET NULL")
     db.commit()
     db.close()
 
@@ -113,12 +113,19 @@ def api_list_contacts():
     if search:
         like = f'%{search}%'
         rows = query(
-            f'SELECT * FROM contacts WHERE first_name LIKE ? OR last_name LIKE ? '
-            f'OR company LIKE ? OR email LIKE ? ORDER BY {sort} {direction}',
-            (like, like, like, like)
+            f'SELECT c.*, co.name AS company_name FROM contacts c '
+            f'LEFT JOIN companies co ON co.id=c.company_id '
+            f'WHERE c.first_name LIKE ? OR c.last_name LIKE ? '
+            f'OR c.company LIKE ? OR co.name LIKE ? OR c.email LIKE ? '
+            f'ORDER BY c.{sort} {direction}',
+            (like, like, like, like, like)
         )
     else:
-        rows = query(f'SELECT * FROM contacts ORDER BY {sort} {direction}')
+        rows = query(
+            f'SELECT c.*, co.name AS company_name FROM contacts c '
+            f'LEFT JOIN companies co ON co.id=c.company_id '
+            f'ORDER BY c.{sort} {direction}'
+        )
     return jsonify(as_list(rows))
 
 

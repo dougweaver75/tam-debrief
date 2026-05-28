@@ -13,6 +13,7 @@ def client(tmp_path):
     ccrm_app.DB_PATH = str(db_file)
     ccrm_app.app.config['TESTING'] = True
     ccrm_app.init_db()
+    ccrm_app.migrate_db()
     with ccrm_app.app.test_client() as client:
         yield client
 
@@ -124,3 +125,13 @@ def test_dashboard_stats(client):
     assert d['open_deals_count'] == 1   # only lead is open
     assert d['open_deals_value'] == 1000
     assert len(d['recent_interactions']) == 1
+
+def test_companies_table_exists(client):
+    r = client.get('/api/companies')
+    assert r.status_code == 200
+    assert r.get_json() == []
+
+def test_meetings_table_exists(client):
+    r = client.get('/api/meetings')
+    assert r.status_code == 200
+    assert r.get_json() == []

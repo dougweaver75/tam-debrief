@@ -31,3 +31,41 @@ CREATE TABLE IF NOT EXISTS deals (
     created_at  TEXT    NOT NULL,
     updated_at  TEXT    NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS companies (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    name       TEXT    NOT NULL,
+    industry   TEXT    DEFAULT '',
+    website    TEXT    DEFAULT '',
+    address    TEXT    DEFAULT '',
+    notes      TEXT    DEFAULT '',
+    created_at TEXT    NOT NULL,
+    updated_at TEXT    NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS meetings (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    title        TEXT    NOT NULL,
+    meeting_date TEXT    NOT NULL,
+    company_id   INTEGER REFERENCES companies(id) ON DELETE SET NULL,
+    notes        TEXT    DEFAULT '',
+    created_at   TEXT    NOT NULL,
+    updated_at   TEXT    NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS meeting_attendees (
+    meeting_id INTEGER NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
+    contact_id INTEGER NOT NULL REFERENCES contacts(id) ON DELETE CASCADE,
+    PRIMARY KEY (meeting_id, contact_id)
+);
+
+CREATE TABLE IF NOT EXISTS action_items (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    meeting_id   INTEGER NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
+    assigned_to  INTEGER REFERENCES contacts(id) ON DELETE SET NULL,
+    description  TEXT    NOT NULL,
+    due_date     TEXT,
+    completed    INTEGER NOT NULL DEFAULT 0,
+    created_at   TEXT    NOT NULL,
+    updated_at   TEXT    NOT NULL
+);

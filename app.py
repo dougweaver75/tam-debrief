@@ -53,6 +53,17 @@ def init_db():
         conn.executescript(f.read())
     conn.close()
 
+def migrate_db():
+    """Add columns to existing tables that schema.sql can't add (SQLite ALTER limitations)."""
+    db = sqlite3.connect(DB_PATH)
+    cols = {r[1] for r in db.execute("PRAGMA table_info(contacts)")}
+    if 'company_id' not in cols:
+        db.execute("ALTER TABLE contacts ADD COLUMN company_id INTEGER")
+    if 'reports_to' not in cols:
+        db.execute("ALTER TABLE contacts ADD COLUMN reports_to INTEGER")
+    db.commit()
+    db.close()
+
 
 # ── Page routes ──────────────────────────────────────────────────────────────
 
@@ -241,6 +252,22 @@ def api_delete_deal(did):
     return jsonify({'ok': True})
 
 
+# ── API: companies ───────────────────────────────────────────────────────────
+
+@app.route('/api/companies', methods=['GET'])
+def api_list_companies():
+    rows = query('SELECT * FROM companies ORDER BY name ASC')
+    return jsonify(as_list(rows))
+
+
+# ── API: meetings ────────────────────────────────────────────────────────────
+
+@app.route('/api/meetings', methods=['GET'])
+def api_list_meetings():
+    rows = query('SELECT * FROM meetings ORDER BY meeting_date DESC')
+    return jsonify(as_list(rows))
+
+
 # ── API: dashboard ───────────────────────────────────────────────────────────
 
 @app.route('/api/dashboard', methods=['GET'])
@@ -269,5 +296,6 @@ def api_dashboard():
 if __name__ == '__main__':
     if not os.path.exists(DB_PATH):
         init_db()
+    migrate_db()
     threading.Timer(1.2, lambda: webbrowser.open('http://localhost:5000/')).start()
     app.run(debug=False, port=5000, host='127.0.0.1')

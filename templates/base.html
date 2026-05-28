@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}CCRM{% endblock %}</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <nav class="sidebar">
+    <div class="sidebar-brand">CCRM</div>
+    <ul class="sidebar-nav">
+      <li>
+        <a href="/dashboard"
+           class="nav-link {% if request.path == '/dashboard' %}active{% endif %}">
+          📊 Dashboard
+        </a>
+      </li>
+      <li>
+        <a href="/contacts"
+           class="nav-link {% if request.path.startswith('/contacts') %}active{% endif %}">
+          👥 Contacts
+        </a>
+      </li>
+    </ul>
+  </nav>
+  <main class="main-content">
+    {% block content %}{% endblock %}
+  </main>
+
+  <!-- Modal backdrop (shared) -->
+  <div class="modal-backdrop" id="modalBackdrop" onclick="closeModal()"></div>
+
+  <script src="/static/app.js"></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

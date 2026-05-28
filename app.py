@@ -97,12 +97,16 @@ def api_list_contacts():
 
 @app.route('/api/contacts', methods=['POST'])
 def api_create_contact():
-    data = request.get_json(force=True)
-    ts   = now_iso()
-    cur  = execute(
+    data = request.get_json(force=True) or {}
+    first_name = data.get('first_name', '').strip()
+    last_name  = data.get('last_name', '').strip()
+    if not first_name or not last_name:
+        return jsonify({'error': 'first_name and last_name are required'}), 400
+    ts  = now_iso()
+    cur = execute(
         'INSERT INTO contacts (first_name,last_name,company,title,email,phone,notes,created_at,updated_at) '
         'VALUES (?,?,?,?,?,?,?,?,?)',
-        (data['first_name'], data['last_name'],
+        (first_name, last_name,
          data.get('company',''), data.get('title',''),
          data.get('email',''),   data.get('phone',''),
          data.get('notes',''),   ts, ts)
@@ -120,21 +124,28 @@ def api_get_contact(cid):
 
 @app.route('/api/contacts/<int:cid>', methods=['PUT'])
 def api_update_contact(cid):
-    data = request.get_json(force=True)
+    if not query('SELECT id FROM contacts WHERE id=?', (cid,), one=True):
+        return jsonify({'error': 'Not found'}), 404
+    data = request.get_json(force=True) or {}
+    first_name = data.get('first_name', '').strip()
+    last_name  = data.get('last_name', '').strip()
+    if not first_name or not last_name:
+        return jsonify({'error': 'first_name and last_name are required'}), 400
     execute(
         'UPDATE contacts SET first_name=?,last_name=?,company=?,title=?,email=?,phone=?,notes=?,updated_at=? WHERE id=?',
-        (data['first_name'], data['last_name'],
+        (first_name, last_name,
          data.get('company',''), data.get('title',''),
          data.get('email',''),   data.get('phone',''),
          data.get('notes',''),   now_iso(), cid)
     )
-    row = query('SELECT * FROM contacts WHERE id=?', (cid,), one=True)
-    return (jsonify({'error': 'Not found'}), 404) if not row else (jsonify(as_dict(row)), 200)
+    return jsonify(as_dict(query('SELECT * FROM contacts WHERE id=?', (cid,), one=True)))
 
 
 @app.route('/api/contacts/<int:cid>', methods=['DELETE'])
 def api_delete_contact(cid):
-    execute('DELETE FROM contacts WHERE id=?', (cid,))
+    cur = execute('DELETE FROM contacts WHERE id=?', (cid,))
+    if cur.rowcount == 0:
+        return jsonify({'error': 'Not found'}), 404
     return jsonify({'ok': True})
 
 
@@ -151,17 +162,30 @@ def api_list_interactions(cid):
 
 @app.route('/api/interactions', methods=['POST'])
 def api_create_interaction():
-    data = request.get_json(force=True)
-    cur  = execute(
-        'INSERT INTO interactions (contact_id,type,summary,interaction_date,created_at) VALUES (?,?,?,?,?)',
-        (data['contact_id'], data['type'], data['summary'], data['interaction_date'], now_iso())
-    )
+    data = request.get_json(force=True) or {}
+    contact_id = data.get('contact_id')
+    itype      = data.get('type', '')
+    summary    = data.get('summary', '').strip()
+    idate      = data.get('interaction_date', '')
+    if not contact_id or not summary or not idate:
+        return jsonify({'error': 'contact_id, summary, and interaction_date are required'}), 400
+    if itype not in ('call', 'email', 'meeting', 'note'):
+        return jsonify({'error': 'type must be call, email, meeting, or note'}), 400
+    try:
+        cur = execute(
+            'INSERT INTO interactions (contact_id,type,summary,interaction_date,created_at) VALUES (?,?,?,?,?)',
+            (contact_id, itype, summary, idate, now_iso())
+        )
+    except sqlite3.IntegrityError as e:
+        return jsonify({'error': str(e)}), 400
     return jsonify(as_dict(query('SELECT * FROM interactions WHERE id=?', (cur.lastrowid,), one=True))), 201
 
 
 @app.route('/api/interactions/<int:iid>', methods=['DELETE'])
 def api_delete_interaction(iid):
-    execute('DELETE FROM interactions WHERE id=?', (iid,))
+    cur = execute('DELETE FROM interactions WHERE id=?', (iid,))
+    if cur.rowcount == 0:
+        return jsonify({'error': 'Not found'}), 404
     return jsonify({'ok': True})
 
 
@@ -175,32 +199,45 @@ def api_list_deals(cid):
 
 @app.route('/api/deals', methods=['POST'])
 def api_create_deal():
-    data = request.get_json(force=True)
-    ts   = now_iso()
-    cur  = execute(
-        'INSERT INTO deals (contact_id,title,value,stage,notes,created_at,updated_at) VALUES (?,?,?,?,?,?,?)',
-        (data['contact_id'], data['title'],
-         float(data.get('value', 0)), data.get('stage', 'lead'),
-         data.get('notes', ''), ts, ts)
-    )
+    data = request.get_json(force=True) or {}
+    contact_id = data.get('contact_id')
+    title      = data.get('title', '').strip()
+    if not contact_id or not title:
+        return jsonify({'error': 'contact_id and title are required'}), 400
+    try:
+        ts  = now_iso()
+        cur = execute(
+            'INSERT INTO deals (contact_id,title,value,stage,notes,created_at,updated_at) VALUES (?,?,?,?,?,?,?)',
+            (contact_id, title,
+             float(data.get('value', 0)), data.get('stage', 'lead'),
+             data.get('notes', ''), ts, ts)
+        )
+    except sqlite3.IntegrityError as e:
+        return jsonify({'error': str(e)}), 400
     return jsonify(as_dict(query('SELECT * FROM deals WHERE id=?', (cur.lastrowid,), one=True))), 201
 
 
 @app.route('/api/deals/<int:did>', methods=['PUT'])
 def api_update_deal(did):
-    data = request.get_json(force=True)
+    if not query('SELECT id FROM deals WHERE id=?', (did,), one=True):
+        return jsonify({'error': 'Not found'}), 404
+    data = request.get_json(force=True) or {}
+    title = data.get('title', '').strip()
+    if not title:
+        return jsonify({'error': 'title is required'}), 400
     execute(
         'UPDATE deals SET title=?,value=?,stage=?,notes=?,updated_at=? WHERE id=?',
-        (data['title'], float(data.get('value', 0)),
+        (title, float(data.get('value', 0)),
          data.get('stage', 'lead'), data.get('notes', ''), now_iso(), did)
     )
-    row = query('SELECT * FROM deals WHERE id=?', (did,), one=True)
-    return (jsonify({'error': 'Not found'}), 404) if not row else (jsonify(as_dict(row)), 200)
+    return jsonify(as_dict(query('SELECT * FROM deals WHERE id=?', (did,), one=True)))
 
 
 @app.route('/api/deals/<int:did>', methods=['DELETE'])
 def api_delete_deal(did):
-    execute('DELETE FROM deals WHERE id=?', (did,))
+    cur = execute('DELETE FROM deals WHERE id=?', (did,))
+    if cur.rowcount == 0:
+        return jsonify({'error': 'Not found'}), 404
     return jsonify({'ok': True})
 
 
@@ -233,4 +270,4 @@ if __name__ == '__main__':
     if not os.path.exists(DB_PATH):
         init_db()
     threading.Timer(1.2, lambda: webbrowser.open('http://localhost:5000/')).start()
-    app.run(debug=False, port=5000)
+    app.run(debug=False, port=5000, host='127.0.0.1')

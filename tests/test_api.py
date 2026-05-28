@@ -104,9 +104,14 @@ def test_delete_cascades(client):
     cid = _make_contact(client)
     client.post('/api/interactions', json={'contact_id': cid, 'type': 'call', 'summary': 'X', 'interaction_date': '2026-05-28'})
     client.post('/api/deals', json={'contact_id': cid, 'title': 'Deal', 'value': 0, 'stage': 'lead'})
-    client.delete(f'/api/contacts/{cid}')
+    r_del = client.delete(f'/api/contacts/{cid}')
+    assert r_del.status_code == 200
+    assert r_del.get_json()['ok'] is True
     r = client.get(f'/api/contacts/{cid}')
     assert r.status_code == 404
+    # verify cascade: interactions and deals removed
+    assert client.get(f'/api/contacts/{cid}/interactions').get_json() == []
+    assert client.get(f'/api/contacts/{cid}/deals').get_json() == []
 
 def test_dashboard_stats(client):
     cid = _make_contact(client)

@@ -59,3 +59,63 @@ def test_delete_contact(client):
     client.delete(f'/api/contacts/{cid}')
     r2 = client.get(f'/api/contacts/{cid}')
     assert r2.status_code == 404
+
+def _make_contact(client, fname='Test', lname='User'):
+    r = client.post('/api/contacts', json={'first_name': fname, 'last_name': lname})
+    return r.get_json()['id']
+
+def test_create_interaction(client):
+    cid = _make_contact(client)
+    r = client.post('/api/interactions', json={
+        'contact_id': cid, 'type': 'call',
+        'summary': 'Quick check-in', 'interaction_date': '2026-05-28'
+    })
+    assert r.status_code == 201
+    data = r.get_json()
+    assert data['type'] == 'call'
+    assert data['contact_id'] == cid
+
+def test_list_interactions(client):
+    cid = _make_contact(client)
+    client.post('/api/interactions', json={'contact_id': cid, 'type': 'email', 'summary': 'Follow up', 'interaction_date': '2026-05-27'})
+    client.post('/api/interactions', json={'contact_id': cid, 'type': 'meeting', 'summary': 'Demo call', 'interaction_date': '2026-05-28'})
+    r = client.get(f'/api/contacts/{cid}/interactions')
+    data = r.get_json()
+    assert len(data) == 2
+    assert data[0]['interaction_date'] == '2026-05-28'  # sorted newest first
+
+def test_delete_interaction(client):
+    cid = _make_contact(client)
+    r = client.post('/api/interactions', json={'contact_id': cid, 'type': 'note', 'summary': 'Note', 'interaction_date': '2026-05-28'})
+    iid = r.get_json()['id']
+    client.delete(f'/api/interactions/{iid}')
+    r2 = client.get(f'/api/contacts/{cid}/interactions')
+    assert r2.get_json() == []
+
+def test_create_and_update_deal(client):
+    cid = _make_contact(client)
+    r = client.post('/api/deals', json={'contact_id': cid, 'title': 'Pilot', 'value': 5000, 'stage': 'lead'})
+    assert r.status_code == 201
+    did = r.get_json()['id']
+    r2 = client.put(f'/api/deals/{did}', json={'title': 'Pilot', 'value': 7500, 'stage': 'qualified'})
+    assert r2.get_json()['stage'] == 'qualified'
+
+def test_delete_cascades(client):
+    cid = _make_contact(client)
+    client.post('/api/interactions', json={'contact_id': cid, 'type': 'call', 'summary': 'X', 'interaction_date': '2026-05-28'})
+    client.post('/api/deals', json={'contact_id': cid, 'title': 'Deal', 'value': 0, 'stage': 'lead'})
+    client.delete(f'/api/contacts/{cid}')
+    r = client.get(f'/api/contacts/{cid}')
+    assert r.status_code == 404
+
+def test_dashboard_stats(client):
+    cid = _make_contact(client)
+    client.post('/api/deals', json={'contact_id': cid, 'title': 'A', 'value': 1000, 'stage': 'lead'})
+    client.post('/api/deals', json={'contact_id': cid, 'title': 'B', 'value': 2000, 'stage': 'closed-won'})
+    client.post('/api/interactions', json={'contact_id': cid, 'type': 'call', 'summary': 'Hi', 'interaction_date': '2026-05-28'})
+    r = client.get('/api/dashboard')
+    d = r.get_json()
+    assert d['total_contacts'] == 1
+    assert d['open_deals_count'] == 1   # only lead is open
+    assert d['open_deals_value'] == 1000
+    assert len(d['recent_interactions']) == 1

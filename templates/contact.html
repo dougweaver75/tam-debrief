@@ -1,0 +1,121 @@
+{% extends 'base.html' %}
+{% block title %}Contact — CCRM{% endblock %}
+{% block content %}
+<div id="contactDetailRoot">
+  <p class="empty-state">Loading…</p>
+</div>
+
+<!-- Interactions section (rendered into DOM by JS after contact header) -->
+<div id="interactionsSection" style="display:none">
+  <div class="card">
+    <div class="section-header">
+      <div class="card-title" style="margin:0">Interactions</div>
+      <button class="btn btn-primary btn-sm" onclick="openLogInteraction()">+ Log Interaction</button>
+    </div>
+    <div id="interactionsList"></div>
+  </div>
+</div>
+
+<!-- Deals section -->
+<div id="dealsSection" style="display:none">
+  <div class="card">
+    <div class="section-header">
+      <div class="card-title" style="margin:0">Deals</div>
+      <button class="btn btn-primary btn-sm" onclick="openAddDeal()">+ Add Deal</button>
+    </div>
+    <div id="dealsList"></div>
+  </div>
+</div>
+
+<!-- Edit Contact Modal -->
+<div class="modal" id="contactModal">
+  <div class="modal-title" id="contactModalTitle">Edit Contact</div>
+  <form id="contactForm" onsubmit="submitContactDetail(event)">
+    <input type="hidden" id="contactId">
+    <div class="form-row-2">
+      <div class="form-row"><label>First Name *</label><input type="text" id="cfFirstName" required></div>
+      <div class="form-row"><label>Last Name *</label><input type="text" id="cfLastName" required></div>
+    </div>
+    <div class="form-row-2">
+      <div class="form-row"><label>Company</label><input type="text" id="cfCompany"></div>
+      <div class="form-row"><label>Title</label><input type="text" id="cfTitle"></div>
+    </div>
+    <div class="form-row-2">
+      <div class="form-row"><label>Email</label><input type="email" id="cfEmail"></div>
+      <div class="form-row"><label>Phone</label><input type="tel" id="cfPhone"></div>
+    </div>
+    <div class="form-row"><label>Notes</label><textarea id="cfNotes"></textarea></div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button type="submit" class="btn btn-primary">Save</button>
+    </div>
+  </form>
+</div>
+
+<!-- Log Interaction Modal -->
+<div class="modal" id="interactionModal">
+  <div class="modal-title">Log Interaction</div>
+  <form id="interactionForm" onsubmit="submitInteraction(event)">
+    <div class="form-row-2">
+      <div class="form-row">
+        <label>Type</label>
+        <select id="iType">
+          <option value="call">Call</option>
+          <option value="email">Email</option>
+          <option value="meeting">Meeting</option>
+          <option value="note">Note</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <label>Date</label>
+        <input type="date" id="iDate" required>
+      </div>
+    </div>
+    <div class="form-row">
+      <label>Summary *</label>
+      <textarea id="iSummary" required placeholder="What happened?"></textarea>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button type="submit" class="btn btn-primary">Log</button>
+    </div>
+  </form>
+</div>
+
+<!-- Add/Edit Deal Modal -->
+<div class="modal" id="dealModal">
+  <div class="modal-title" id="dealModalTitle">Add Deal</div>
+  <form id="dealForm" onsubmit="submitDeal(event)">
+    <input type="hidden" id="dealId">
+    <div class="form-row"><label>Title *</label><input type="text" id="dTitle" required></div>
+    <div class="form-row-2">
+      <div class="form-row">
+        <label>Value ($)</label>
+        <input type="number" id="dValue" min="0" step="0.01" value="0">
+      </div>
+      <div class="form-row">
+        <label>Stage</label>
+        <select id="dStage">
+          <option value="lead">Lead</option>
+          <option value="qualified">Qualified</option>
+          <option value="proposal">Proposal</option>
+          <option value="closed-won">Closed Won</option>
+          <option value="closed-lost">Closed Lost</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-row"><label>Notes</label><textarea id="dNotes"></textarea></div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button type="submit" class="btn btn-primary">Save</button>
+    </div>
+  </form>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+  initContactDetail({{ contact_id }});
+  document.getElementById('interactionsSection').style.display = '';
+  document.getElementById('dealsSection').style.display = '';
+</script>
+{% endblock %}

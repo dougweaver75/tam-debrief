@@ -356,7 +356,9 @@ async function loadDashboard() {
 }
 
 function renderDashboard(data) {
-  document.getElementById('statContacts').textContent = data.total_contacts;
+  document.getElementById('statContacts').textContent    = data.total_contacts;
+  document.getElementById('statMeetings').textContent    = data.total_meetings;
+  document.getElementById('statActionItems').textContent = data.open_action_items;
 
   const el = document.getElementById('recentList');
   if (!data.recent_interactions.length) {

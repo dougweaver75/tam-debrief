@@ -928,6 +928,26 @@ function renderDashboard(data) {
   document.getElementById('statMeetings').textContent    = data.total_meetings;
   document.getElementById('statActionItems').textContent = data.open_action_items;
 
+  const aiEl = document.getElementById('dashActionItems');
+  if (aiEl) {
+    if (!data.action_items.length) {
+      aiEl.innerHTML = '<p class="empty-state">No open action items.</p>';
+    } else {
+      aiEl.innerHTML = data.action_items.map(a => `
+        <div class="action-item-row">
+          <div style="flex:1">
+            <div class="ai-description">${esc(a.description)}</div>
+            <div class="ai-meta">
+              <a href="/meetings/${a.meeting_id}" class="table-link">${esc(a.meeting_title)}</a>
+              ${a.due_date ? `<span>Due: ${fmtDate(a.due_date)}</span>` : ''}
+              ${a.first_name ? `<span>→ ${esc(a.first_name)} ${esc(a.last_name)}</span>` : ''}
+            </div>
+          </div>
+        </div>
+      `).join('');
+    }
+  }
+
   const el = document.getElementById('recentList');
   if (!data.recent_interactions.length) {
     el.innerHTML = '<p class="empty-state">No interactions yet.</p>';

@@ -54,8 +54,11 @@ def init_db():
     conn.close()
 
 def migrate_db():
-    """Add columns to existing tables that schema.sql can't add (SQLite ALTER limitations)."""
+    """Create missing tables and add new columns to existing tables."""
     db = sqlite3.connect(DB_PATH)
+    schema = os.path.join(BASE_DIR, 'schema.sql')
+    with open(schema) as f:
+        db.executescript(f.read())
     cols = {r[1] for r in db.execute("PRAGMA table_info(contacts)")}
     if 'company_id' not in cols:
         db.execute("ALTER TABLE contacts ADD COLUMN company_id INTEGER REFERENCES companies(id) ON DELETE SET NULL")

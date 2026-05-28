@@ -212,3 +212,50 @@ def test_meeting_attendees(client):
     assert attendees[0]['id'] == cid
     assert client.delete(f'/api/meetings/{mid}/attendees/{cid}').status_code == 200
     assert client.get(f'/api/meetings/{mid}/attendees').get_json() == []
+
+
+def _make_meeting(client, title='Test Meeting', date='2026-06-01'):
+    r = client.post('/api/meetings', json={'title': title, 'meeting_date': date})
+    return r.get_json()['id']
+
+def test_create_action_item(client):
+    cid = _make_contact(client)
+    mid = _make_meeting(client)
+    r = client.post(f'/api/meetings/{mid}/action_items', json={
+        'description': 'Send follow-up email',
+        'due_date': '2026-06-05',
+        'assigned_to': cid
+    })
+    assert r.status_code == 201
+    d = r.get_json()
+    assert d['description'] == 'Send follow-up email'
+    assert d['completed'] == 0
+
+def test_action_item_description_required(client):
+    mid = _make_meeting(client)
+    assert client.post(f'/api/meetings/{mid}/action_items', json={'due_date': '2026-06-01'}).status_code == 400
+
+def test_toggle_action_item(client):
+    mid = _make_meeting(client)
+    r = client.post(f'/api/meetings/{mid}/action_items', json={'description': 'Do X'})
+    aid = r.get_json()['id']
+    r2 = client.patch(f'/api/action_items/{aid}/toggle')
+    assert r2.status_code == 200
+    assert r2.get_json()['completed'] == 1
+    r3 = client.patch(f'/api/action_items/{aid}/toggle')
+    assert r3.get_json()['completed'] == 0
+
+def test_update_action_item(client):
+    mid = _make_meeting(client)
+    r = client.post(f'/api/meetings/{mid}/action_items', json={'description': 'Old desc'})
+    aid = r.get_json()['id']
+    r2 = client.put(f'/api/action_items/{aid}', json={'description': 'New desc', 'due_date': '2026-06-10'})
+    assert r2.status_code == 200
+    assert r2.get_json()['description'] == 'New desc'
+
+def test_delete_action_item(client):
+    mid = _make_meeting(client)
+    r = client.post(f'/api/meetings/{mid}/action_items', json={'description': 'Temp item'})
+    aid = r.get_json()['id']
+    assert client.delete(f'/api/action_items/{aid}').status_code == 200
+    assert client.get(f'/api/meetings/{mid}/action_items').get_json() == []

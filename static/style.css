@@ -367,3 +367,25 @@ textarea { resize: vertical; min-height: 72px; }
 
 /* ── Misc ───────────────────────────────────────────────────────────────── */
 .sort-arrow { font-size: 10px; margin-left: 3px; }
+
+/* Action Items */
+.action-item-row {
+  display: flex;
+  align-items: flex-start;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+  gap: 8px;
+}
+.action-item-row:last-child { border-bottom: none; }
+.action-item-row.done .ai-description {
+  text-decoration: line-through;
+  color: var(--text-muted);
+}
+.ai-description { font-weight: 500; }
+.ai-meta {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  display: flex;
+  gap: 12px;
+  margin-top: 2px;
+}

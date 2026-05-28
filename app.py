@@ -427,6 +427,73 @@ def api_dashboard():
     })
 
 
+# ── API: action items ────────────────────────────────────────────────────────
+
+@app.route('/api/meetings/<int:mid>/action_items', methods=['GET'])
+def api_list_action_items(mid):
+    rows = query(
+        'SELECT a.*, c.first_name, c.last_name FROM action_items a '
+        'LEFT JOIN contacts c ON c.id=a.assigned_to '
+        'WHERE a.meeting_id=? '
+        'ORDER BY CASE WHEN a.due_date IS NULL THEN 1 ELSE 0 END ASC, a.due_date ASC',
+        (mid,)
+    )
+    return jsonify(as_list(rows))
+
+
+@app.route('/api/meetings/<int:mid>/action_items', methods=['POST'])
+def api_create_action_item(mid):
+    if not query('SELECT id FROM meetings WHERE id=?', (mid,), one=True):
+        return jsonify({'error': 'Meeting not found'}), 404
+    data = request.get_json(force=True) or {}
+    description = data.get('description', '').strip()
+    if not description:
+        return jsonify({'error': 'description is required'}), 400
+    ts  = now_iso()
+    cur = execute(
+        'INSERT INTO action_items (meeting_id,assigned_to,description,due_date,completed,created_at,updated_at) '
+        'VALUES (?,?,?,?,0,?,?)',
+        (mid, data.get('assigned_to') or None, description,
+         data.get('due_date') or None, ts, ts)
+    )
+    return jsonify(as_dict(query('SELECT * FROM action_items WHERE id=?', (cur.lastrowid,), one=True))), 201
+
+
+@app.route('/api/action_items/<int:aid>', methods=['PUT'])
+def api_update_action_item(aid):
+    if not query('SELECT id FROM action_items WHERE id=?', (aid,), one=True):
+        return jsonify({'error': 'Not found'}), 404
+    data = request.get_json(force=True) or {}
+    description = data.get('description', '').strip()
+    if not description:
+        return jsonify({'error': 'description is required'}), 400
+    execute(
+        'UPDATE action_items SET description=?,due_date=?,assigned_to=?,updated_at=? WHERE id=?',
+        (description, data.get('due_date') or None,
+         data.get('assigned_to') or None, now_iso(), aid)
+    )
+    return jsonify(as_dict(query('SELECT * FROM action_items WHERE id=?', (aid,), one=True)))
+
+
+@app.route('/api/action_items/<int:aid>/toggle', methods=['PATCH'])
+def api_toggle_action_item(aid):
+    row = query('SELECT * FROM action_items WHERE id=?', (aid,), one=True)
+    if not row:
+        return jsonify({'error': 'Not found'}), 404
+    new_val = 0 if row['completed'] else 1
+    execute('UPDATE action_items SET completed=?,updated_at=? WHERE id=?',
+            (new_val, now_iso(), aid))
+    return jsonify(as_dict(query('SELECT * FROM action_items WHERE id=?', (aid,), one=True)))
+
+
+@app.route('/api/action_items/<int:aid>', methods=['DELETE'])
+def api_delete_action_item(aid):
+    cur = execute('DELETE FROM action_items WHERE id=?', (aid,))
+    if cur.rowcount == 0:
+        return jsonify({'error': 'Not found'}), 404
+    return jsonify({'ok': True})
+
+
 # ── Entry point ──────────────────────────────────────────────────────────────
 
 if __name__ == '__main__':

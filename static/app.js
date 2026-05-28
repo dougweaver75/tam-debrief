@@ -483,21 +483,15 @@ function initMeetingDetail(meetingId) {
 
 async function loadMeetingDetail(meetingId) {
   try {
-    const [meeting, attendees] = await Promise.all([
+    const [meeting, attendees, actionItems] = await Promise.all([
       API.get(`/api/meetings/${meetingId}`),
-      API.get(`/api/meetings/${meetingId}/attendees`)
+      API.get(`/api/meetings/${meetingId}/attendees`),
+      API.get(`/api/meetings/${meetingId}/action_items`)
     ]);
     _currentMeeting = meeting;
     renderMeetingDetail(meeting);
     await renderAttendeesWithDropdown(meetingId, attendees);
-    // Action items loaded separately (endpoint added in Task 6)
-    try {
-      const actionItems = await API.get(`/api/meetings/${meetingId}/action_items`);
-      renderActionItems(actionItems);
-    } catch (e) {
-      const el = document.getElementById('actionItemsList');
-      if (el) el.innerHTML = '<p class="empty-state">No action items yet.</p>';
-    }
+    renderActionItems(actionItems);
   } catch (e) {
     document.getElementById('meetingDetailRoot').innerHTML =
       '<p class="empty-state">Meeting not found.</p>';
@@ -615,10 +609,95 @@ async function deleteMeetingDetail(id) {
   } catch (e) { showToast('Delete failed.'); }
 }
 
-// Stub for Task 6 — will be replaced by full action items implementation
+// ── Action Items ───────────────────────────────────────────────────────────
+
 function renderActionItems(items) {
   const el = document.getElementById('actionItemsList');
-  if (el) el.innerHTML = '<p class="empty-state">No action items yet.</p>';
+  if (!el) return;
+  if (!items.length) {
+    el.innerHTML = '<p class="empty-state">No action items yet.</p>';
+    return;
+  }
+  el.innerHTML = items.map(a => `
+    <div class="action-item-row${a.completed ? ' done' : ''}" id="ai-row-${a.id}">
+      <input type="checkbox" ${a.completed ? 'checked' : ''}
+             onchange="toggleActionItem(${a.id})" style="margin-right:10px;cursor:pointer">
+      <div style="flex:1">
+        <div class="ai-description">${esc(a.description)}</div>
+        <div class="ai-meta">
+          ${a.due_date ? `<span>Due: ${fmtDate(a.due_date)}</span>` : ''}
+          ${a.first_name ? `<span>→ ${esc(a.first_name)} ${esc(a.last_name)}</span>` : ''}
+        </div>
+      </div>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-secondary btn-sm" onclick="openEditActionItem(${a.id})">Edit</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteActionItem(${a.id})">✕</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function openAddActionItem() {
+  document.getElementById('actionItemModalTitle').textContent = 'Add Action Item';
+  document.getElementById('actionItemId').value = '';
+  document.getElementById('actionItemForm').reset();
+  await populateContactDropdown('aiAssignedTo', null, null);
+  openModal('actionItemModal');
+}
+
+async function openEditActionItem(id) {
+  try {
+    const items = await API.get(`/api/meetings/${_currentMeeting.id}/action_items`);
+    const a = items.find(x => x.id === id);
+    if (!a) return;
+    document.getElementById('actionItemModalTitle').textContent = 'Edit Action Item';
+    document.getElementById('actionItemId').value  = a.id;
+    document.getElementById('aiDescription').value = a.description || '';
+    document.getElementById('aiDueDate').value      = a.due_date    || '';
+    await populateContactDropdown('aiAssignedTo', a.assigned_to, null);
+    openModal('actionItemModal');
+  } catch (e) { showToast('Failed to load action item.'); }
+}
+
+async function submitActionItem(e) {
+  e.preventDefault();
+  const id   = document.getElementById('actionItemId').value;
+  const data = {
+    description:  document.getElementById('aiDescription').value.trim(),
+    due_date:     document.getElementById('aiDueDate').value || null,
+    assigned_to:  document.getElementById('aiAssignedTo').value || null,
+  };
+  try {
+    if (id) {
+      await API.put(`/api/action_items/${id}`, data);
+      showToast('Action item updated.');
+    } else {
+      await API.post(`/api/meetings/${_currentMeeting.id}/action_items`, data);
+      showToast('Action item added.');
+    }
+    closeModal();
+    const items = await API.get(`/api/meetings/${_currentMeeting.id}/action_items`);
+    renderActionItems(items);
+  } catch (e) { showToast('Save failed.'); }
+}
+
+async function toggleActionItem(id) {
+  try {
+    const r = await fetch(`/api/action_items/${id}/toggle`, { method: 'PATCH' });
+    if (!r.ok) throw new Error(await r.text());
+    const items = await API.get(`/api/meetings/${_currentMeeting.id}/action_items`);
+    renderActionItems(items);
+  } catch (e) { showToast('Failed to update.'); }
+}
+
+async function deleteActionItem(id) {
+  if (!confirm('Delete this action item?')) return;
+  try {
+    await API.del(`/api/action_items/${id}`);
+    showToast('Action item deleted.');
+    const items = await API.get(`/api/meetings/${_currentMeeting.id}/action_items`);
+    renderActionItems(items);
+  } catch (e) { showToast('Delete failed.'); }
 }
 
 // ── Companies List ─────────────────────────────────────────────────────────

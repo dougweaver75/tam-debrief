@@ -58,7 +58,7 @@ def migrate_db():
     db = sqlite3.connect(DB_PATH)
     cols = {r[1] for r in db.execute("PRAGMA table_info(contacts)")}
     if 'company_id' not in cols:
-        db.execute("ALTER TABLE contacts ADD COLUMN company_id INTEGER")
+        db.execute("ALTER TABLE contacts ADD COLUMN company_id INTEGER REFERENCES companies(id) ON DELETE SET NULL")
     if 'reports_to' not in cols:
         db.execute("ALTER TABLE contacts ADD COLUMN reports_to INTEGER")
     db.commit()
@@ -280,6 +280,8 @@ def api_delete_company(coid):
 
 @app.route('/api/companies/<int:coid>/contacts', methods=['GET'])
 def api_company_contacts(coid):
+    if not query('SELECT id FROM companies WHERE id=?', (coid,), one=True):
+        return jsonify({'error': 'Not found'}), 404
     rows = query(
         'SELECT * FROM contacts WHERE company_id=? ORDER BY last_name ASC, first_name ASC',
         (coid,)

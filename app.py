@@ -64,6 +64,9 @@ def migrate_db():
         db.execute("ALTER TABLE contacts ADD COLUMN company_id INTEGER REFERENCES companies(id) ON DELETE SET NULL")
     if 'reports_to' not in cols:
         db.execute("ALTER TABLE contacts ADD COLUMN reports_to INTEGER REFERENCES contacts(id) ON DELETE SET NULL")
+    cols_m = {r[1] for r in db.execute("PRAGMA table_info(meetings)")}
+    if 'summary' not in cols_m:
+        db.execute("ALTER TABLE meetings ADD COLUMN summary TEXT DEFAULT ''")
     db.commit()
     db.close()
 

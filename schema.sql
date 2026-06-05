@@ -49,6 +49,7 @@ CREATE TABLE IF NOT EXISTS meetings (
     meeting_date TEXT    NOT NULL,
     company_id   INTEGER REFERENCES companies(id) ON DELETE SET NULL,
     notes        TEXT    DEFAULT '',
+    summary      TEXT    DEFAULT '',
     created_at   TEXT    NOT NULL,
     updated_at   TEXT    NOT NULL
 );

@@ -259,3 +259,25 @@ def test_delete_action_item(client):
     aid = r.get_json()['id']
     assert client.delete(f'/api/action_items/{aid}').status_code == 200
     assert client.get(f'/api/meetings/{mid}/action_items').get_json() == []
+
+def test_update_meeting_summary(client):
+    meeting = client.post('/api/meetings', json={
+        'title': 'Team Sync', 'meeting_date': '2026-06-01'
+    }).get_json()
+    r = client.patch(f'/api/meetings/{meeting["id"]}/summary',
+                     json={'summary': 'Key decisions made.'})
+    assert r.status_code == 200
+    assert r.get_json()['ok'] is True
+    m = client.get(f'/api/meetings/{meeting["id"]}').get_json()
+    assert m['summary'] == 'Key decisions made.'
+
+def test_update_meeting_summary_not_found(client):
+    r = client.patch('/api/meetings/999/summary', json={'summary': 'nope'})
+    assert r.status_code == 404
+
+def test_update_meeting_summary_empty(client):
+    meeting = client.post('/api/meetings', json={
+        'title': 'Sync', 'meeting_date': '2026-06-01'
+    }).get_json()
+    r = client.patch(f'/api/meetings/{meeting["id"]}/summary', json={'summary': ''})
+    assert r.status_code == 400

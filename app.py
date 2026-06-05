@@ -373,6 +373,19 @@ def api_delete_meeting(mid):
     return jsonify({'ok': True})
 
 
+@app.route('/api/meetings/<int:mid>/summary', methods=['PATCH'])
+def api_update_meeting_summary(mid):
+    if not query('SELECT id FROM meetings WHERE id=?', (mid,), one=True):
+        return jsonify({'error': 'Not found'}), 404
+    data    = request.get_json(force=True) or {}
+    summary = data.get('summary', '').strip()
+    if not summary:
+        return jsonify({'error': 'summary is required'}), 400
+    execute('UPDATE meetings SET summary=?,updated_at=? WHERE id=?',
+            (summary, now_iso(), mid))
+    return jsonify({'ok': True})
+
+
 @app.route('/api/meetings/<int:mid>/attendees', methods=['GET'])
 def api_list_attendees(mid):
     rows = query(

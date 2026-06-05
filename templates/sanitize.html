@@ -118,10 +118,10 @@ async function loadMeetingContext(mid) {
     entities = [];
     nextId   = 1;
     ctx.attendees.forEach(a => {
-      addEntityToList(`${a.first_name} ${a.last_name}`.trim(), 'person');
+      registerWithWords(`${a.first_name} ${a.last_name}`.trim(), 'person');
     });
     if (ctx.company) {
-      addEntityToList(ctx.company.name, 'company');
+      registerWithWords(ctx.company.name, 'company');
     }
     renderEntityList();
     if (entities.length === 0) {
@@ -156,12 +156,7 @@ function addEntity() {
     return;
   }
   const type = document.getElementById('eType').value;
-  addEntityToList(name, type);
-  name.split(/\s+/).forEach(word => {
-    if (!entities.some(e => e.name.toLowerCase() === word.toLowerCase())) {
-      addEntityToList(word, type);
-    }
-  });
+  registerWithWords(name, type);
   nameEl.value = '';
   nameEl.focus();
   renderEntityList();
@@ -169,6 +164,17 @@ function addEntity() {
 
 function addEntityToList(name, type) {
   entities.push({ id: nextId++, name, type });
+}
+
+function registerWithWords(name, type) {
+  if (!entities.some(e => e.name.toLowerCase() === name.toLowerCase())) {
+    addEntityToList(name, type);
+  }
+  name.split(/\s+/).forEach(word => {
+    if (!entities.some(e => e.name.toLowerCase() === word.toLowerCase())) {
+      addEntityToList(word, type);
+    }
+  });
 }
 
 function deleteEntity(id) {

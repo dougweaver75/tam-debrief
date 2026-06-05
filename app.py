@@ -386,6 +386,37 @@ def api_update_meeting_summary(mid):
     return jsonify({'ok': True})
 
 
+@app.route('/api/sanitize/context', methods=['GET'])
+def api_sanitize_context():
+    mid = request.args.get('meeting_id', type=int)
+    if not mid:
+        return jsonify({'error': 'meeting_id is required'}), 400
+    meeting = query(
+        'SELECT m.*, co.name AS company_name FROM meetings m '
+        'LEFT JOIN companies co ON co.id=m.company_id WHERE m.id=?',
+        (mid,), one=True
+    )
+    if not meeting:
+        return jsonify({'error': 'Not found'}), 404
+    m = as_dict(meeting)
+    attendees = query(
+        'SELECT c.id, c.first_name, c.last_name FROM contacts c '
+        'JOIN meeting_attendees ma ON ma.contact_id=c.id '
+        'WHERE ma.meeting_id=? ORDER BY c.last_name, c.first_name',
+        (mid,)
+    )
+    company = None
+    if m.get('company_id'):
+        company = {'id': m['company_id'], 'name': m['company_name']}
+    return jsonify({
+        'meeting_id': m['id'],
+        'title':      m['title'],
+        'notes':      m['notes'] or '',
+        'company':    company,
+        'attendees':  as_list(attendees),
+    })
+
+
 @app.route('/api/meetings/<int:mid>/attendees', methods=['GET'])
 def api_list_attendees(mid):
     rows = query(

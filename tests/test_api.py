@@ -281,3 +281,43 @@ def test_update_meeting_summary_empty(client):
     }).get_json()
     r = client.patch(f'/api/meetings/{meeting["id"]}/summary', json={'summary': ''})
     assert r.status_code == 400
+
+def test_sanitize_context_with_attendees_and_company(client):
+    co = client.post('/api/companies', json={'name': 'Acme Corp'}).get_json()
+    meeting = client.post('/api/meetings', json={
+        'title': 'Q2 Review', 'meeting_date': '2026-06-01',
+        'company_id': co['id'], 'notes': 'Raw notes here'
+    }).get_json()
+    c1 = client.post('/api/contacts', json={'first_name': 'Jane', 'last_name': 'Doe'}).get_json()
+    c2 = client.post('/api/contacts', json={'first_name': 'Bob', 'last_name': 'Smith'}).get_json()
+    client.post(f'/api/meetings/{meeting["id"]}/attendees', json={'contact_id': c1['id']})
+    client.post(f'/api/meetings/{meeting["id"]}/attendees', json={'contact_id': c2['id']})
+
+    r = client.get(f'/api/sanitize/context?meeting_id={meeting["id"]}')
+    assert r.status_code == 200
+    data = r.get_json()
+    assert data['meeting_id'] == meeting['id']
+    assert data['title'] == 'Q2 Review'
+    assert data['notes'] == 'Raw notes here'
+    assert data['company']['name'] == 'Acme Corp'
+    assert len(data['attendees']) == 2
+    first_names = {a['first_name'] for a in data['attendees']}
+    assert first_names == {'Jane', 'Bob'}
+
+def test_sanitize_context_no_company_no_attendees(client):
+    meeting = client.post('/api/meetings', json={
+        'title': 'Solo Meeting', 'meeting_date': '2026-06-01'
+    }).get_json()
+    r = client.get(f'/api/sanitize/context?meeting_id={meeting["id"]}')
+    assert r.status_code == 200
+    data = r.get_json()
+    assert data['company'] is None
+    assert data['attendees'] == []
+
+def test_sanitize_context_not_found(client):
+    r = client.get('/api/sanitize/context?meeting_id=999')
+    assert r.status_code == 404
+
+def test_sanitize_context_missing_param(client):
+    r = client.get('/api/sanitize/context')
+    assert r.status_code == 400

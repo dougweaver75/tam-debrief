@@ -16,6 +16,7 @@
         <option value="">— Add attendee —</option>
       </select>
       <button class="btn btn-primary btn-sm" onclick="addAttendee()">Add</button>
+      <button class="btn btn-secondary btn-sm" onclick="openNewPersonModal()">+ New Person</button>
     </div>
     <div id="attendeesList"></div>
   </div>
@@ -51,6 +52,25 @@
     <div class="modal-footer">
       <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
       <button type="submit" class="btn btn-primary">Save</button>
+    </div>
+  </form>
+</div>
+
+<!-- New Person Modal -->
+<div class="modal" id="newPersonModal">
+  <div class="modal-title">Add New Person</div>
+  <form id="newPersonForm" onsubmit="submitNewPerson(event)">
+    <div class="form-row-2">
+      <div class="form-row"><label>First Name *</label><input type="text" id="npFirst" required></div>
+      <div class="form-row"><label>Last Name *</label><input type="text" id="npLast" required></div>
+    </div>
+    <div class="form-row-2">
+      <div class="form-row"><label>Company</label><input type="text" id="npCompany" placeholder="Optional"></div>
+      <div class="form-row"><label>Email</label><input type="email" id="npEmail" placeholder="Optional"></div>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button type="submit" class="btn btn-primary">Create &amp; Add</button>
     </div>
   </form>
 </div>

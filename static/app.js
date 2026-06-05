@@ -577,6 +577,29 @@ async function addAttendee() {
   } catch (e) { showToast('Failed to add attendee.'); }
 }
 
+function openNewPersonModal() {
+  document.getElementById('newPersonForm').reset();
+  openModal('newPersonModal');
+}
+
+async function submitNewPerson(e) {
+  e.preventDefault();
+  const data = {
+    first_name: document.getElementById('npFirst').value.trim(),
+    last_name:  document.getElementById('npLast').value.trim(),
+    company:    document.getElementById('npCompany').value.trim(),
+    email:      document.getElementById('npEmail').value.trim(),
+  };
+  try {
+    const contact = await API.post('/api/contacts', data);
+    await API.post(`/api/meetings/${_currentMeeting.id}/attendees`, { contact_id: contact.id });
+    closeModal();
+    showToast(`${data.first_name} ${data.last_name} added.`);
+    const attendees = await API.get(`/api/meetings/${_currentMeeting.id}/attendees`);
+    await renderAttendeesWithDropdown(_currentMeeting.id, attendees);
+  } catch (e) { showToast('Failed to create person.'); }
+}
+
 async function removeAttendee(contactId) {
   try {
     await API.del(`/api/meetings/${_currentMeeting.id}/attendees/${contactId}`);

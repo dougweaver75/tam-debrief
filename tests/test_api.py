@@ -321,3 +321,14 @@ def test_sanitize_context_not_found(client):
 def test_sanitize_context_missing_param(client):
     r = client.get('/api/sanitize/context')
     assert r.status_code == 400
+
+def test_put_meeting_preserves_summary(client):
+    mid = client.post('/api/meetings', json={
+        'title': 'Original', 'meeting_date': '2026-06-01'
+    }).get_json()['id']
+    client.patch(f'/api/meetings/{mid}/summary', json={'summary': 'preserved'})
+    client.put(f'/api/meetings/{mid}', json={
+        'title': 'Updated', 'meeting_date': '2026-06-01', 'notes': 'new notes'
+    })
+    m = client.get(f'/api/meetings/{mid}').get_json()
+    assert m['summary'] == 'preserved'

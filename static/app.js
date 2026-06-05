@@ -20,6 +20,11 @@ const API = {
     const r = await fetch(url, { method: 'DELETE' });
     if (!r.ok) throw new Error(await r.text());
     return r.json();
+  },
+  async patch(url, data) {
+    const r = await fetch(url, { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify(data) });
+    if (!r.ok) throw new Error(await r.text());
+    return r.json();
   }
 };
 
@@ -512,12 +517,21 @@ function renderMeetingDetail(m) {
           <button class="btn btn-danger btn-sm" onclick="deleteMeetingDetail(${m.id})">Delete</button>
         </div>
       </div>
+      ${m.summary ? `<div class="contact-fields">
+        <div class="field-row" style="grid-column:1/-1">
+          <span class="field-label">Summary</span>
+          <span class="field-value" style="white-space:pre-wrap">${esc(m.summary)}</span>
+        </div>
+      </div>` : ''}
       ${m.notes ? `<div class="contact-fields">
         <div class="field-row" style="grid-column:1/-1">
           <span class="field-label">Notes</span>
           <span class="field-value" style="white-space:pre-wrap">${esc(m.notes)}</span>
         </div>
       </div>` : ''}
+      <div style="padding:12px 16px 8px;text-align:right">
+        <a href="/sanitize?meeting_id=${m.id}" class="btn btn-secondary btn-sm">🔒 Sanitize Notes</a>
+      </div>
     </div>
   `;
 }

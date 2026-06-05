@@ -520,7 +520,7 @@ function renderMeetingDetail(m) {
       ${m.summary ? `<div class="contact-fields">
         <div class="field-row" style="grid-column:1/-1">
           <span class="field-label">Summary</span>
-          <span class="field-value" style="white-space:pre-wrap">${esc(m.summary)}</span>
+          <div class="field-value md-content">${marked.parse(m.summary)}</div>
         </div>
       </div>` : ''}
       ${m.notes ? `<div class="contact-fields">

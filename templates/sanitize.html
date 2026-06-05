@@ -1,0 +1,245 @@
+{% extends 'base.html' %}
+{% block title %}Sanitize Notes — CCRM{% endblock %}
+{% block content %}
+<div style="display:flex;gap:20px;height:calc(100vh - 60px);overflow:hidden">
+
+  <!-- Left: Context panel -->
+  <div style="width:340px;flex-shrink:0;display:flex;flex-direction:column;gap:16px;overflow-y:auto;padding-bottom:16px">
+
+    <div class="card">
+      <div class="card-title">Meeting</div>
+      <select id="meetingPicker" onchange="onMeetingChange()" style="width:100%">
+        <option value="">— Select a meeting —</option>
+      </select>
+    </div>
+
+    <div class="card" style="flex:1">
+      <div class="card-title">Entity Registry</div>
+      <div style="display:flex;gap:6px;margin-bottom:10px">
+        <input type="text" id="eName" placeholder="Name to mask"
+               style="flex:1;min-width:0"
+               onkeydown="if(event.key==='Enter')addEntity()">
+        <select id="eType" style="width:96px">
+          <option value="person">Person</option>
+          <option value="company">Company</option>
+        </select>
+        <button class="btn btn-primary btn-sm" onclick="addEntity()">Add</button>
+      </div>
+      <div id="entityList"><p class="empty-state">No entities registered.</p></div>
+    </div>
+
+  </div>
+
+  <!-- Right: Pipeline panels -->
+  <div style="flex:1;display:flex;flex-direction:column;gap:16px;overflow-y:auto;padding-bottom:16px">
+
+    <div class="card">
+      <div class="card-title">Raw Notes</div>
+      <textarea id="rawNotes" placeholder="Paste raw meeting notes here…"
+                style="width:100%;min-height:150px;font-family:inherit;resize:vertical"></textarea>
+      <div style="margin-top:8px;display:flex;justify-content:flex-end">
+        <button class="btn btn-primary" onclick="sanitize()">&#9654;&nbsp;Sanitize</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="section-header">
+        <div class="card-title" style="margin:0">Sanitized Output</div>
+        <button class="btn btn-secondary btn-sm" id="copyBtn" onclick="copyOutput()" disabled>Copy</button>
+      </div>
+      <textarea id="sanitizedOut" readonly placeholder="Sanitized text appears here…"
+                style="width:100%;min-height:150px;font-family:inherit;resize:vertical;background:var(--bg,#f1f5f9)"></textarea>
+    </div>
+
+    <div class="card">
+      <div class="card-title">LLM Response</div>
+      <p style="font-size:0.8rem;color:var(--text-muted,#64748b);margin-bottom:8px">
+        Copy the sanitized output above, run it through your LLM, then paste the result here.
+      </p>
+      <textarea id="llmResponse" placeholder="Paste the LLM's organized summary here…"
+                style="width:100%;min-height:150px;font-family:inherit;resize:vertical"></textarea>
+      <div style="margin-top:8px;display:flex;justify-content:flex-end">
+        <button class="btn btn-primary" id="saveSummaryBtn" onclick="saveSummary()" disabled>
+          Save Summary to Meeting
+        </button>
+      </div>
+    </div>
+
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+'use strict';
+
+let entities         = [];
+let nextId           = 1;
+let currentMeetingId = null;
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+async function initSanitize() {
+  await populateMeetingPicker();
+  const params = new URLSearchParams(window.location.search);
+  const mid    = parseInt(params.get('meeting_id'));
+  if (mid) {
+    document.getElementById('meetingPicker').value = String(mid);
+    await loadMeetingContext(mid);
+  }
+}
+
+async function populateMeetingPicker() {
+  try {
+    const meetings = await API.get('/api/meetings');
+    const sel = document.getElementById('meetingPicker');
+    sel.innerHTML = '<option value="">— Select a meeting —</option>' +
+      meetings.map(m =>
+        `<option value="${m.id}">${esc(m.title)} (${fmtDate(m.meeting_date)})</option>`
+      ).join('');
+  } catch (e) { showToast('Failed to load meetings.'); }
+}
+
+async function onMeetingChange() {
+  const mid = parseInt(document.getElementById('meetingPicker').value);
+  if (!mid) { resetPage(); return; }
+  await loadMeetingContext(mid);
+}
+
+async function loadMeetingContext(mid) {
+  try {
+    const ctx = await API.get(`/api/sanitize/context?meeting_id=${mid}`);
+    currentMeetingId = ctx.meeting_id;
+
+    document.getElementById('rawNotes').value      = ctx.notes;
+    document.getElementById('sanitizedOut').value  = '';
+    document.getElementById('llmResponse').value   = '';
+    document.getElementById('copyBtn').disabled    = true;
+    document.getElementById('saveSummaryBtn').disabled = false;
+
+    entities = [];
+    nextId   = 1;
+    ctx.attendees.forEach(a => {
+      addEntityToList(`${a.first_name} ${a.last_name}`.trim(), 'person');
+    });
+    if (ctx.company) {
+      addEntityToList(ctx.company.name, 'company');
+    }
+    renderEntityList();
+    if (entities.length === 0) {
+      showToast('No entities auto-loaded — add them manually.');
+    }
+  } catch (e) {
+    showToast('Meeting not found.');
+    resetPage();
+  }
+}
+
+function resetPage() {
+  currentMeetingId = null;
+  entities = [];
+  nextId   = 1;
+  document.getElementById('rawNotes').value      = '';
+  document.getElementById('sanitizedOut').value  = '';
+  document.getElementById('llmResponse').value   = '';
+  document.getElementById('copyBtn').disabled    = true;
+  document.getElementById('saveSummaryBtn').disabled = true;
+  renderEntityList();
+}
+
+// ── Entity registry ───────────────────────────────────────────────────────────
+function addEntity() {
+  const nameEl = document.getElementById('eName');
+  const name   = nameEl.value.trim();
+  if (!name) { nameEl.focus(); return; }
+  if (entities.some(e => e.name.toLowerCase() === name.toLowerCase())) {
+    showToast('Already registered: ' + name);
+    nameEl.select();
+    return;
+  }
+  const type = document.getElementById('eType').value;
+  addEntityToList(name, type);
+  name.split(/\s+/).forEach(word => {
+    if (!entities.some(e => e.name.toLowerCase() === word.toLowerCase())) {
+      addEntityToList(word, type);
+    }
+  });
+  nameEl.value = '';
+  nameEl.focus();
+  renderEntityList();
+}
+
+function addEntityToList(name, type) {
+  entities.push({ id: nextId++, name, type });
+}
+
+function deleteEntity(id) {
+  entities = entities.filter(e => e.id !== id);
+  renderEntityList();
+}
+
+function renderEntityList() {
+  const el = document.getElementById('entityList');
+  if (!entities.length) {
+    el.innerHTML = '<p class="empty-state">No entities registered.</p>';
+    return;
+  }
+  el.innerHTML = entities.map(e =>
+    `<div class="interaction-item">
+      <div style="flex:1;display:flex;align-items:center;gap:6px;min-width:0">
+        <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(e.name)}</span>
+        <span class="badge badge-${e.type === 'person' ? 'note' : 'email'}">${e.type}</span>
+      </div>
+      <button class="btn btn-danger btn-sm" onclick="deleteEntity(${e.id})">&#x2715;</button>
+    </div>`
+  ).join('');
+}
+
+// ── Sanitization engine (ported from claude-sanitizer) ────────────────────────
+function rxEsc(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+function maskWord(w) {
+  return w.length <= 1 ? w : w[0] + '*'.repeat(w.length - 1);
+}
+function maskPhrase(match) {
+  return '[' + match.split(/\s+/).map(maskWord).join(' ') + ']';
+}
+
+function sanitize() {
+  const raw = document.getElementById('rawNotes').value;
+  if (!raw.trim())       { showToast('Paste some notes first.');        return; }
+  if (!entities.length)  { showToast('Add at least one entity first.'); return; }
+
+  const sorted   = [...entities].sort((a, b) => b.name.length - a.name.length);
+  const alts     = sorted.map(e =>
+    '(?:' + e.name.trim().split(/\s+/).map(rxEsc).join('\\s+') + ')'
+  );
+  const combined = new RegExp('\\b(?:' + alts.join('|') + ')\\b', 'gi');
+  const result   = raw.replace(combined, match => maskPhrase(match));
+
+  document.getElementById('sanitizedOut').value = result;
+  document.getElementById('copyBtn').disabled   = false;
+}
+
+function copyOutput() {
+  const text = document.getElementById('sanitizedOut').value;
+  if (!text) return;
+  navigator.clipboard.writeText(text).then(
+    ()  => showToast('Copied to clipboard.'),
+    ()  => { document.getElementById('sanitizedOut').select(); document.execCommand('copy'); showToast('Copied.'); }
+  );
+}
+
+// ── Save summary ──────────────────────────────────────────────────────────────
+async function saveSummary() {
+  if (!currentMeetingId) { showToast('Select a meeting first.'); return; }
+  const summary = document.getElementById('llmResponse').value.trim();
+  if (!summary) { showToast('Nothing to save.'); return; }
+  try {
+    await API.patch(`/api/meetings/${currentMeetingId}/summary`, { summary });
+    showToast('Summary saved.');
+  } catch (e) { showToast('Save failed, try again.'); }
+}
+
+initSanitize();
+</script>
+{% endblock %}

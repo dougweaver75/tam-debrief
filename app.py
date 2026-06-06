@@ -370,7 +370,11 @@ def api_update_meeting(mid):
         'UPDATE meetings SET title=?,meeting_date=?,company_id=?,notes=?,updated_at=? WHERE id=?',
         (title, mdate, data.get('company_id') or None, data.get('notes',''), now_iso(), mid)
     )
-    return jsonify(as_dict(query('SELECT * FROM meetings WHERE id=?', (mid,), one=True)))
+    return jsonify(as_dict(query(
+        'SELECT m.*, co.name AS company_name FROM meetings m '
+        'LEFT JOIN companies co ON co.id=m.company_id WHERE m.id=?',
+        (mid,), one=True
+    )))
 
 
 @app.route('/api/meetings/<int:mid>', methods=['DELETE'])

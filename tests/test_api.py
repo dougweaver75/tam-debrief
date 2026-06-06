@@ -340,3 +340,12 @@ def test_new_meeting_page(client):
     assert b'mNotes' in r.data
     assert b'New Meeting' in r.data
     assert b'saveNewMeeting' in r.data
+
+def test_put_meeting_returns_company_name(client):
+    r_co = client.post('/api/companies', json={'name': 'TestCo'})
+    coid = r_co.get_json()['id']
+    r = client.post('/api/meetings', json={'title': 'M', 'meeting_date': '2026-06-06', 'company_id': coid})
+    mid = r.get_json()['id']
+    r2 = client.put(f'/api/meetings/{mid}', json={'title': 'M Updated', 'meeting_date': '2026-06-06', 'company_id': coid})
+    assert r2.status_code == 200
+    assert r2.get_json()['company_name'] == 'TestCo'

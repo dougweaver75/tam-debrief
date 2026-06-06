@@ -65,8 +65,9 @@ CREATE TABLE IF NOT EXISTS action_items (
     meeting_id   INTEGER NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
     assigned_to  INTEGER REFERENCES contacts(id) ON DELETE SET NULL,
     description  TEXT    NOT NULL,
-    due_date     TEXT,
-    completed    INTEGER NOT NULL DEFAULT 0,
+    due_date      TEXT,
+    due_date_text TEXT,
+    completed     INTEGER NOT NULL DEFAULT 0,
     created_at   TEXT    NOT NULL,
     updated_at   TEXT    NOT NULL
 );

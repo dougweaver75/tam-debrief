@@ -349,3 +349,23 @@ def test_put_meeting_returns_company_name(client):
     r2 = client.put(f'/api/meetings/{mid}', json={'title': 'M Updated', 'meeting_date': '2026-06-06', 'company_id': coid})
     assert r2.status_code == 200
     assert r2.get_json()['company_name'] == 'TestCo'
+
+def test_create_action_item_with_due_date_text(client):
+    mid = _make_meeting(client)
+    r = client.post(f'/api/meetings/{mid}/action_items', json={
+        'description': 'Schedule follow-up',
+        'due_date_text': 'within a couple of weeks',
+    })
+    assert r.status_code == 201
+    assert r.get_json()['due_date_text'] == 'within a couple of weeks'
+
+def test_update_action_item_due_date_text(client):
+    mid = _make_meeting(client)
+    r = client.post(f'/api/meetings/{mid}/action_items', json={'description': 'Do X'})
+    aid = r.get_json()['id']
+    r2 = client.put(f'/api/action_items/{aid}', json={
+        'description': 'Do X',
+        'due_date_text': 'end of Q3',
+    })
+    assert r2.status_code == 200
+    assert r2.get_json()['due_date_text'] == 'end of Q3'

@@ -67,6 +67,9 @@ def migrate_db():
     cols_m = {r[1] for r in db.execute("PRAGMA table_info(meetings)")}
     if 'summary' not in cols_m:
         db.execute("ALTER TABLE meetings ADD COLUMN summary TEXT DEFAULT ''")
+    cols_ai = {r[1] for r in db.execute("PRAGMA table_info(action_items)")}
+    if 'due_date_text' not in cols_ai:
+        db.execute("ALTER TABLE action_items ADD COLUMN due_date_text TEXT")
     db.commit()
     db.close()
 
@@ -520,10 +523,10 @@ def api_create_action_item(mid):
         return jsonify({'error': 'description is required'}), 400
     ts  = now_iso()
     cur = execute(
-        'INSERT INTO action_items (meeting_id,assigned_to,description,due_date,completed,created_at,updated_at) '
-        'VALUES (?,?,?,?,0,?,?)',
+        'INSERT INTO action_items (meeting_id,assigned_to,description,due_date,due_date_text,completed,created_at,updated_at) '
+        'VALUES (?,?,?,?,?,0,?,?)',
         (mid, data.get('assigned_to') or None, description,
-         data.get('due_date') or None, ts, ts)
+         data.get('due_date') or None, data.get('due_date_text') or None, ts, ts)
     )
     return jsonify(as_dict(query('SELECT * FROM action_items WHERE id=?', (cur.lastrowid,), one=True))), 201
 
@@ -537,8 +540,8 @@ def api_update_action_item(aid):
     if not description:
         return jsonify({'error': 'description is required'}), 400
     execute(
-        'UPDATE action_items SET description=?,due_date=?,assigned_to=?,updated_at=? WHERE id=?',
-        (description, data.get('due_date') or None,
+        'UPDATE action_items SET description=?,due_date=?,due_date_text=?,assigned_to=?,updated_at=? WHERE id=?',
+        (description, data.get('due_date') or None, data.get('due_date_text') or None,
          data.get('assigned_to') or None, now_iso(), aid)
     )
     return jsonify(as_dict(query('SELECT * FROM action_items WHERE id=?', (aid,), one=True)))

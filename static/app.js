@@ -492,6 +492,8 @@ async function loadMeetingDetail(meetingId) {
     ]);
     _currentMeeting = meeting;
     renderMeetingDetail(meeting);
+    const extractBtn = document.getElementById('extractFromSummaryBtn');
+    if (extractBtn) extractBtn.style.display = meeting.summary ? '' : 'none';
     await renderAttendeesWithDropdown(meetingId, attendees);
     renderActionItems(actionItems);
   } catch (e) {
@@ -678,6 +680,116 @@ async function deleteMeetingDetail(id) {
     await API.del(`/api/meetings/${id}`);
     window.location.href = '/meetings';
   } catch (e) { showToast('Delete failed.'); }
+}
+
+function parseActionItemsFromSummary(markdown) {
+  const lines = markdown.split('\n');
+  const candidates = [];
+  let inActionSection = false;
+  let headerSeen = false;
+  let separatorSeen = false;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (/^#{1,4}\s+.*(action|to.?do)/i.test(trimmed)) {
+      inActionSection = true;
+      headerSeen = false;
+      separatorSeen = false;
+      continue;
+    }
+    if (!inActionSection) continue;
+    if (/^#{1,4}\s+/.test(trimmed) && !/action|to.?do/i.test(trimmed)) break;
+    if (!trimmed.startsWith('|') || !trimmed.endsWith('|')) continue;
+    const cells = trimmed.split('|').map(c => c.trim()).filter(c => c !== '');
+    if (!headerSeen) { headerSeen = true; continue; }
+    if (!separatorSeen && cells.every(c => /^[-: ]+$/.test(c))) { separatorSeen = true; continue; }
+    const description = cells[0] ? cells[0].replace(/\*+/g, '').trim() : '';
+    if (!description || /^[-:]+$/.test(description)) continue;
+    const ownerHint   = cells[1] ? cells[1].replace(/\*+/g, '').trim() : '';
+    const dueDateHint = cells[2] ? cells[2].replace(/\*+/g, '').trim() : '';
+    candidates.push({ description, ownerHint, dueDateHint });
+  }
+  return candidates;
+}
+
+async function openExtractModal() {
+  if (!_currentMeeting || !_currentMeeting.summary) {
+    showToast('No summary available to extract from.');
+    return;
+  }
+  const candidates = parseActionItemsFromSummary(_currentMeeting.summary);
+  if (!candidates.length) {
+    showToast('No action items found in summary.');
+    return;
+  }
+
+  const listEl = document.getElementById('extractCandidatesList');
+  listEl.innerHTML = candidates.map((c, i) => `
+    <div class="extract-candidate" style="border-bottom:1px solid var(--border);padding:12px 0">
+      <div style="display:flex;align-items:flex-start;gap:10px">
+        <input type="checkbox" data-idx="${i}" checked style="margin-top:4px;flex-shrink:0;cursor:pointer">
+        <div style="flex:1">
+          <textarea class="extract-desc" data-idx="${i}"
+            style="width:100%;min-height:48px;resize:vertical;font-size:0.9em;padding:6px;border:1px solid var(--border);border-radius:4px;background:var(--bg-primary);color:var(--text-primary)"
+          >${esc(c.description)}</textarea>
+          <div class="form-row-2" style="margin-top:8px">
+            <div class="form-row">
+              <label style="font-size:0.82em">Assign To</label>
+              <select id="extractAssignee_${i}" style="font-size:0.87em">
+                <option value="">— Unassigned —</option>
+              </select>
+            </div>
+            <div class="form-row">
+              <label style="font-size:0.82em">Due Date</label>
+              <input type="text" id="extractDueText_${i}" value="${esc(c.dueDateHint)}"
+                placeholder="e.g. end of Q3"
+                style="margin-bottom:4px;font-size:0.87em">
+              <input type="date" id="extractDueDate_${i}" style="font-size:0.87em">
+            </div>
+          </div>
+          ${c.ownerHint ? `<div style="color:var(--text-secondary);font-size:0.79em;margin-top:4px">Owner hint: ${esc(c.ownerHint)}</div>` : ''}
+        </div>
+      </div>
+    </div>
+  `).join('');
+
+  await Promise.all(
+    candidates.map((_, i) => populateAttendeeDropdown(`extractAssignee_${i}`, null, _currentMeeting.id))
+  );
+
+  openModal('extractModal');
+}
+
+async function submitExtractedItems() {
+  const btn = document.querySelector('#extractModal .btn-primary');
+  const rows = document.querySelectorAll('.extract-candidate');
+  const selected = [];
+  rows.forEach((row, i) => {
+    const cb = row.querySelector('input[type=checkbox]');
+    if (!cb || !cb.checked) return;
+    const desc = row.querySelector('.extract-desc').value.trim();
+    if (!desc) return;
+    selected.push({
+      description:   desc,
+      assigned_to:   document.getElementById(`extractAssignee_${i}`).value || null,
+      due_date_text: document.getElementById(`extractDueText_${i}`).value.trim() || null,
+      due_date:      document.getElementById(`extractDueDate_${i}`).value || null,
+    });
+  });
+  if (!selected.length) { showToast('No items selected.'); return; }
+  btn.disabled = true;
+  try {
+    await Promise.all(
+      selected.map(data => API.post(`/api/meetings/${_currentMeeting.id}/action_items`, data))
+    );
+    closeModal();
+    const items = await API.get(`/api/meetings/${_currentMeeting.id}/action_items`);
+    renderActionItems(items);
+    showToast(`${selected.length} action item${selected.length > 1 ? 's' : ''} added.`);
+  } catch (e) {
+    showToast('Failed to add items.');
+    btn.disabled = false;
+  }
 }
 
 // ── Action Items ───────────────────────────────────────────────────────────

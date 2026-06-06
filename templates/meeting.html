@@ -27,7 +27,10 @@
   <div class="card">
     <div class="section-header">
       <div class="card-title" style="margin:0">Action Items</div>
-      <button class="btn btn-primary btn-sm" onclick="openAddActionItem()">+ Add</button>
+      <div style="display:flex;gap:8px">
+        <button id="extractFromSummaryBtn" class="btn btn-secondary btn-sm" style="display:none" onclick="openExtractModal()">Extract from Summary</button>
+        <button class="btn btn-primary btn-sm" onclick="openAddActionItem()">+ Add</button>
+      </div>
     </div>
     <div id="actionItemsList"></div>
   </div>
@@ -73,6 +76,16 @@
       <button type="submit" class="btn btn-primary">Save</button>
     </div>
   </form>
+</div>
+<!-- Extract Action Items Modal -->
+<div class="modal" id="extractModal" style="max-width:620px;max-height:80vh;overflow-y:auto">
+  <div class="modal-title">Extract Action Items from Summary</div>
+  <p style="color:var(--text-secondary);font-size:0.87em;margin:0 0 12px">Uncheck any items you don't want to add. Edit descriptions as needed.</p>
+  <div id="extractCandidatesList"></div>
+  <div class="modal-footer">
+    <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+    <button type="button" class="btn btn-primary" onclick="submitExtractedItems()">Add Selected</button>
+  </div>
 </div>
 {% endblock %}
 {% block scripts %}

@@ -1,38 +1,49 @@
 {% extends 'base.html' %}
 {% block title %}Meeting — CCRM{% endblock %}
 {% block content %}
-<div id="meetingDetailRoot">
-  <p class="empty-state">Loading…</p>
-</div>
+<div style="display:flex;gap:20px;align-items:flex-start">
 
-<!-- Attendees section -->
-<div id="attendeesSection" style="display:none">
-  <div class="card">
-    <div class="section-header">
-      <div class="card-title" style="margin:0">Attendees</div>
+  <!-- Main column: detail / notes -->
+  <div style="flex:1;min-width:0">
+    <div id="meetingDetailRoot">
+      <p class="empty-state">Loading…</p>
     </div>
-    <div id="attendeesAddRow" style="display:flex;gap:8px;margin-bottom:12px">
-      <select id="attendeeSelect" style="flex:1">
-        <option value="">— Add attendee —</option>
-      </select>
-      <button class="btn btn-primary btn-sm" onclick="addAttendee()">Add</button>
-      <button class="btn btn-secondary btn-sm" onclick="openNewPersonModal()">+ New Person</button>
-    </div>
-    <div id="attendeesList"></div>
   </div>
-</div>
 
-<!-- Action Items section -->
-<div id="actionItemsSection" style="display:none">
-  <div class="card">
-    <div class="section-header">
-      <div class="card-title" style="margin:0">Action Items</div>
-      <div style="display:flex;gap:8px">
-        <button id="extractFromSummaryBtn" class="btn btn-secondary btn-sm" style="display:none" onclick="openExtractModal()">Extract from Summary</button>
-        <button class="btn btn-primary btn-sm" onclick="openAddActionItem()">+ Add</button>
+  <!-- Right sidebar: attendees + action items -->
+  <div style="width:360px;flex-shrink:0;display:flex;flex-direction:column;gap:16px">
+
+    <!-- Attendees section -->
+    <div id="attendeesSection" style="display:none">
+      <div class="card">
+        <div class="section-header">
+          <div class="card-title" style="margin:0">Attendees</div>
+        </div>
+        <div id="attendeesAddRow" style="display:flex;gap:8px;margin-bottom:12px">
+          <select id="attendeeSelect" style="flex:1;min-width:0">
+            <option value="">— Add attendee —</option>
+          </select>
+          <button class="btn btn-primary btn-sm" onclick="addAttendee()">Add</button>
+          <button class="btn btn-secondary btn-sm" onclick="openNewPersonModal()">+ New</button>
+        </div>
+        <div id="attendeesList"></div>
       </div>
     </div>
-    <div id="actionItemsList"></div>
+
+    <!-- Action Items section -->
+    <div id="actionItemsSection" style="display:none">
+      <div class="card">
+        <div class="section-header">
+          <div class="card-title" style="margin:0">Action Items</div>
+          <div style="display:flex;gap:8px">
+            <button id="extractFromSummaryBtn" class="btn btn-secondary btn-sm" style="display:none" onclick="openExtractModal()">Extract</button>
+            <button class="btn btn-primary btn-sm" onclick="openAddActionItem()">+ Add</button>
+          </div>
+        </div>
+        <div id="actionItemsList"></div>
+      </div>
+    </div>
+
   </div>
 </div>
 

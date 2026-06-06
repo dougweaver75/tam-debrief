@@ -691,14 +691,14 @@ function parseActionItemsFromSummary(markdown) {
 
   for (const line of lines) {
     const trimmed = line.trim();
-    if (/^#{1,4}\s+.*(action|to.?do)/i.test(trimmed)) {
+    if (/^#{1,4}\s+.*\b(action|to[-\s]?do)\b/i.test(trimmed)) {
       inActionSection = true;
       headerSeen = false;
       separatorSeen = false;
       continue;
     }
     if (!inActionSection) continue;
-    if (/^#{1,4}\s+/.test(trimmed) && !/action|to.?do/i.test(trimmed)) break;
+    if (/^#{1,4}\s+/.test(trimmed) && !/\b(action|to[-\s]?do)\b/i.test(trimmed)) break;
     if (!trimmed.startsWith('|') || !trimmed.endsWith('|')) continue;
     const cells = trimmed.split('|').map(c => c.trim()).filter(c => c !== '');
     if (!headerSeen) { headerSeen = true; continue; }

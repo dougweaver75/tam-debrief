@@ -86,6 +86,18 @@ async function populateContactDropdown(selectId, selectedId, excludeId) {
   } catch (e) { /* leave dropdown */ }
 }
 
+async function populateAttendeeDropdown(selectId, selectedId, meetingId) {
+  const sel = document.getElementById(selectId);
+  if (!sel) return;
+  try {
+    const attendees = await API.get(`/api/meetings/${meetingId}/attendees`);
+    sel.innerHTML = '<option value="">— Unassigned —</option>' +
+      attendees.map(c =>
+        `<option value="${c.id}"${c.id === selectedId ? ' selected' : ''}>${esc(c.last_name)}, ${esc(c.first_name)}</option>`
+      ).join('');
+  } catch (e) { /* leave dropdown */ }
+}
+
 const TYPE_LABELS  = { call:'Call', email:'Email', meeting:'Meeting', note:'Note' };
 
 // ── Contacts List ──────────────────────────────────────────────────────────
@@ -700,7 +712,7 @@ async function openAddActionItem() {
   document.getElementById('actionItemModalTitle').textContent = 'Add Action Item';
   document.getElementById('actionItemId').value = '';
   document.getElementById('actionItemForm').reset();
-  await populateContactDropdown('aiAssignedTo', null, null);
+  await populateAttendeeDropdown('aiAssignedTo', null, _currentMeeting.id);
   openModal('actionItemModal');
 }
 
@@ -713,7 +725,7 @@ async function openEditActionItem(id) {
     document.getElementById('actionItemId').value  = a.id;
     document.getElementById('aiDescription').value = a.description || '';
     document.getElementById('aiDueDate').value      = a.due_date    || '';
-    await populateContactDropdown('aiAssignedTo', a.assigned_to, null);
+    await populateAttendeeDropdown('aiAssignedTo', a.assigned_to, _currentMeeting.id);
     openModal('actionItemModal');
   } catch (e) { showToast('Failed to load action item.'); }
 }

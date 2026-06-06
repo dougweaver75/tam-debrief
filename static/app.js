@@ -532,37 +532,94 @@ async function loadMeetingDetail(meetingId) {
   }
 }
 
-function renderMeetingDetail(m) {
-  document.getElementById('meetingDetailRoot').innerHTML = `
-    <a href="/meetings" class="back-link">← All Meetings</a>
-    <div class="card">
-      <div class="contact-header">
-        <div>
-          <div class="contact-name">${esc(m.title)}</div>
-          <div class="contact-meta">${fmtDate(m.meeting_date)}${m.company_name ? ' · ' + esc(m.company_name) : ''}</div>
+function renderMeetingDetail(m, editMode = false) {
+  if (editMode) {
+    document.getElementById('meetingDetailRoot').innerHTML = `
+      <a href="/meetings" class="back-link">← All Meetings</a>
+      <div class="card">
+        <div class="form-row">
+          <label>Title *</label>
+          <input type="text" id="mTitle" value="${esc(m.title)}" required>
         </div>
-        <div style="display:flex;gap:8px">
-          <button class="btn btn-secondary btn-sm" onclick="openEditMeetingDetail()">Edit</button>
-          <button class="btn btn-danger btn-sm" onclick="deleteMeetingDetail(${m.id})">Delete</button>
+        <div class="form-row-2">
+          <div class="form-row">
+            <label>Date *</label>
+            <input type="date" id="mDate" value="${m.meeting_date}" required>
+          </div>
+          <div class="form-row">
+            <label>Company</label>
+            <select id="mCompanyId"><option value="">— None —</option></select>
+          </div>
+        </div>
+        <div class="form-row">
+          <label>Notes</label>
+          <textarea id="mNotes" style="min-height:160px">${esc(m.notes || '')}</textarea>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" onclick="cancelMeetingEdit()">Cancel</button>
+          <button class="btn btn-primary" onclick="saveMeetingEdit()">Save</button>
         </div>
       </div>
-      ${m.summary ? `<div class="contact-fields">
-        <div class="field-row" style="grid-column:1/-1">
-          <span class="field-label">Summary</span>
-          <div class="field-value md-content">${marked.parse(m.summary)}</div>
+    `;
+    populateCompanyDropdown('mCompanyId', m.company_id);
+  } else {
+    document.getElementById('meetingDetailRoot').innerHTML = `
+      <a href="/meetings" class="back-link">← All Meetings</a>
+      <div class="card">
+        <div class="contact-header">
+          <div>
+            <div class="contact-name">${esc(m.title)}</div>
+            <div class="contact-meta">${fmtDate(m.meeting_date)}${m.company_name ? ' · ' + esc(m.company_name) : ''}</div>
+          </div>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-secondary btn-sm" onclick="enterMeetingEditMode()">Edit</button>
+            <button class="btn btn-danger btn-sm" onclick="deleteMeetingDetail(${m.id})">Delete</button>
+          </div>
         </div>
-      </div>` : ''}
-      ${m.notes ? `<div class="contact-fields">
-        <div class="field-row" style="grid-column:1/-1">
-          <span class="field-label">Notes</span>
-          <span class="field-value" style="white-space:pre-wrap">${esc(m.notes)}</span>
+        ${m.summary ? `<div class="contact-fields">
+          <div class="field-row" style="grid-column:1/-1">
+            <span class="field-label">Summary</span>
+            <div class="field-value md-content">${marked.parse(m.summary)}</div>
+          </div>
+        </div>` : ''}
+        ${m.notes ? `<div class="contact-fields">
+          <div class="field-row" style="grid-column:1/-1">
+            <span class="field-label">Notes</span>
+            <span class="field-value" style="white-space:pre-wrap">${esc(m.notes)}</span>
+          </div>
+        </div>` : ''}
+        <div style="padding:12px 16px 8px;text-align:right">
+          <a href="/sanitize?meeting_id=${m.id}" class="btn btn-secondary btn-sm">🔒 Sanitize Notes</a>
         </div>
-      </div>` : ''}
-      <div style="padding:12px 16px 8px;text-align:right">
-        <a href="/sanitize?meeting_id=${m.id}" class="btn btn-secondary btn-sm">🔒 Sanitize Notes</a>
       </div>
-    </div>
-  `;
+    `;
+  }
+}
+
+function enterMeetingEditMode() {
+  renderMeetingDetail(_currentMeeting, true);
+}
+
+function cancelMeetingEdit() {
+  renderMeetingDetail(_currentMeeting, false);
+}
+
+async function saveMeetingEdit() {
+  const title = document.getElementById('mTitle').value.trim();
+  const date  = document.getElementById('mDate').value;
+  if (!title || !date) { showToast('Title and date are required.'); return; }
+  const data = {
+    title,
+    meeting_date: date,
+    company_id:   document.getElementById('mCompanyId').value || null,
+    notes:        document.getElementById('mNotes').value.trim(),
+  };
+  try {
+    const updated = await API.put(`/api/meetings/${_currentMeeting.id}`, data);
+    _currentMeeting = updated;
+    renderMeetingDetail(updated, false);
+    showToast('Meeting saved.');
+  } catch (e) { showToast('Save failed.'); }
 }
 
 async function renderAttendeesWithDropdown(meetingId, attendees) {
@@ -636,35 +693,6 @@ async function removeAttendee(contactId) {
     const attendees = await API.get(`/api/meetings/${_currentMeeting.id}/attendees`);
     await renderAttendeesWithDropdown(_currentMeeting.id, attendees);
   } catch (e) { showToast('Failed to remove attendee.'); }
-}
-
-async function openEditMeetingDetail() {
-  const m = _currentMeeting;
-  document.getElementById('meetingModalTitle').textContent = 'Edit Meeting';
-  document.getElementById('meetingId').value  = m.id;
-  document.getElementById('mTitle').value     = m.title        || '';
-  document.getElementById('mDate').value      = m.meeting_date || '';
-  document.getElementById('mNotes').value     = m.notes        || '';
-  await populateCompanyDropdown('mCompanyId', m.company_id);
-  openModal('meetingModal');
-}
-
-async function submitMeetingDetail(e) {
-  e.preventDefault();
-  const id   = document.getElementById('meetingId').value;
-  const data = {
-    title:        document.getElementById('mTitle').value.trim(),
-    meeting_date: document.getElementById('mDate').value,
-    company_id:   document.getElementById('mCompanyId').value || null,
-    notes:        document.getElementById('mNotes').value.trim(),
-  };
-  try {
-    const updated = await API.put(`/api/meetings/${id}`, data);
-    _currentMeeting = updated;
-    renderMeetingDetail(updated);
-    closeModal();
-    showToast('Meeting updated.');
-  } catch (e) { showToast('Save failed.'); }
 }
 
 async function deleteMeetingDetail(id) {

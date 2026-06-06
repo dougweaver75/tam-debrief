@@ -33,29 +33,6 @@
   </div>
 </div>
 
-<!-- Edit Meeting Modal -->
-<div class="modal" id="meetingModal">
-  <div class="modal-title" id="meetingModalTitle">Edit Meeting</div>
-  <form id="meetingForm" onsubmit="submitMeetingDetail(event)">
-    <input type="hidden" id="meetingId">
-    <div class="form-row"><label>Title *</label><input type="text" id="mTitle" required></div>
-    <div class="form-row-2">
-      <div class="form-row"><label>Date *</label><input type="date" id="mDate" required></div>
-      <div class="form-row">
-        <label>Company</label>
-        <select id="mCompanyId">
-          <option value="">— None —</option>
-        </select>
-      </div>
-    </div>
-    <div class="form-row"><label>Notes</label><textarea id="mNotes"></textarea></div>
-    <div class="modal-footer">
-      <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
-      <button type="submit" class="btn btn-primary">Save</button>
-    </div>
-  </form>
-</div>
-
 <!-- New Person Modal -->
 <div class="modal" id="newPersonModal">
   <div class="modal-title">Add New Person</div>

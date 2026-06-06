@@ -447,55 +447,11 @@ function renderMeetings(meetings) {
       <td>${fmtDate(m.meeting_date)}</td>
       <td>${m.company_name ? esc(m.company_name) : '—'}</td>
       <td class="table-actions">
-        <button class="btn btn-secondary btn-sm" onclick="openEditMeeting(${m.id})">Edit</button>
+        <a href="/meetings/${m.id}" class="btn btn-secondary btn-sm">Edit</a>
         <button class="btn btn-danger btn-sm" onclick="deleteMeeting(${m.id})">Delete</button>
       </td>
     </tr>
   `).join('');
-}
-
-async function openAddMeeting() {
-  document.getElementById('meetingModalTitle').textContent = 'Add Meeting';
-  document.getElementById('meetingId').value = '';
-  document.getElementById('meetingForm').reset();
-  document.getElementById('mDate').value = new Date().toISOString().slice(0, 10);
-  await populateCompanyDropdown('mCompanyId', null);
-  openModal('meetingModal');
-}
-
-async function openEditMeeting(id) {
-  try {
-    const m = await API.get(`/api/meetings/${id}`);
-    document.getElementById('meetingModalTitle').textContent = 'Edit Meeting';
-    document.getElementById('meetingId').value  = m.id;
-    document.getElementById('mTitle').value     = m.title        || '';
-    document.getElementById('mDate').value      = m.meeting_date || '';
-    document.getElementById('mNotes').value     = m.notes        || '';
-    await populateCompanyDropdown('mCompanyId', m.company_id);
-    openModal('meetingModal');
-  } catch (e) { showToast('Failed to load meeting.'); }
-}
-
-async function submitMeeting(e) {
-  e.preventDefault();
-  const id   = document.getElementById('meetingId').value;
-  const data = {
-    title:        document.getElementById('mTitle').value.trim(),
-    meeting_date: document.getElementById('mDate').value,
-    company_id:   document.getElementById('mCompanyId').value || null,
-    notes:        document.getElementById('mNotes').value.trim(),
-  };
-  try {
-    if (id) {
-      await API.put(`/api/meetings/${id}`, data);
-      showToast('Meeting updated.');
-    } else {
-      await API.post('/api/meetings', data);
-      showToast('Meeting added.');
-    }
-    closeModal();
-    loadMeetings();
-  } catch (e) { showToast('Save failed.'); }
 }
 
 async function deleteMeeting(id) {

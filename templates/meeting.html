@@ -58,8 +58,9 @@
   <form id="actionItemForm" onsubmit="submitActionItem(event)">
     <input type="hidden" id="actionItemId">
     <div class="form-row"><label>Description *</label><textarea id="aiDescription" required placeholder="What needs to be done?"></textarea></div>
+    <div class="form-row"><label>Due Date Note</label><input type="text" id="aiDueDateText" placeholder="e.g. within a couple of weeks"></div>
     <div class="form-row-2">
-      <div class="form-row"><label>Due Date</label><input type="date" id="aiDueDate"></div>
+      <div class="form-row"><label>Hard Due Date</label><input type="date" id="aiDueDate"></div>
       <div class="form-row">
         <label>Assigned To</label>
         <select id="aiAssignedTo">

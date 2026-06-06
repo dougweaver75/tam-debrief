@@ -696,7 +696,7 @@ function renderActionItems(items) {
       <div style="flex:1">
         <div class="ai-description">${esc(a.description)}</div>
         <div class="ai-meta">
-          ${a.due_date ? `<span>Due: ${fmtDate(a.due_date)}</span>` : ''}
+          ${a.due_date ? `<span>Due: ${fmtDate(a.due_date)}</span>` : (a.due_date_text ? `<span>${esc(a.due_date_text)}</span>` : '')}
           ${a.first_name ? `<span>→ ${esc(a.first_name)} ${esc(a.last_name)}</span>` : ''}
         </div>
       </div>
@@ -723,8 +723,9 @@ async function openEditActionItem(id) {
     if (!a) return;
     document.getElementById('actionItemModalTitle').textContent = 'Edit Action Item';
     document.getElementById('actionItemId').value  = a.id;
-    document.getElementById('aiDescription').value = a.description || '';
-    document.getElementById('aiDueDate').value      = a.due_date    || '';
+    document.getElementById('aiDescription').value  = a.description    || '';
+    document.getElementById('aiDueDateText').value  = a.due_date_text  || '';
+    document.getElementById('aiDueDate').value       = a.due_date       || '';
     await populateAttendeeDropdown('aiAssignedTo', a.assigned_to, _currentMeeting.id);
     openModal('actionItemModal');
   } catch (e) { showToast('Failed to load action item.'); }
@@ -734,8 +735,9 @@ async function submitActionItem(e) {
   e.preventDefault();
   const id   = document.getElementById('actionItemId').value;
   const data = {
-    description:  document.getElementById('aiDescription').value.trim(),
-    due_date:     document.getElementById('aiDueDate').value || null,
+    description:   document.getElementById('aiDescription').value.trim(),
+    due_date_text: document.getElementById('aiDueDateText').value.trim() || null,
+    due_date:      document.getElementById('aiDueDate').value || null,
     assigned_to:  document.getElementById('aiAssignedTo').value || null,
   };
   try {

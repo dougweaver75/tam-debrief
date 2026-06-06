@@ -605,9 +605,15 @@ function cancelMeetingEdit() {
 }
 
 async function saveMeetingEdit() {
+  const btn = document.querySelector('#meetingDetailRoot .btn-primary');
+  if (btn) btn.disabled = true;
   const title = document.getElementById('mTitle').value.trim();
   const date  = document.getElementById('mDate').value;
-  if (!title || !date) { showToast('Title and date are required.'); return; }
+  if (!title || !date) {
+    showToast('Title and date are required.');
+    if (btn) btn.disabled = false;
+    return;
+  }
   const data = {
     title,
     meeting_date: date,
@@ -619,7 +625,10 @@ async function saveMeetingEdit() {
     _currentMeeting = updated;
     renderMeetingDetail(updated, false);
     showToast('Meeting saved.');
-  } catch (e) { showToast('Save failed.'); }
+  } catch (e) {
+    showToast('Save failed.');
+    if (btn) btn.disabled = false;
+  }
 }
 
 async function renderAttendeesWithDropdown(meetingId, attendees) {

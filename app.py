@@ -105,6 +105,10 @@ def meetings_page():
 def meeting_page(mid):
     return render_template('meeting.html', meeting_id=mid)
 
+@app.route('/meetings/new')
+def new_meeting_page():
+    return render_template('meeting_new.html')
+
 @app.route('/sanitize')
 def sanitize_page():
     return render_template('sanitize.html')

@@ -390,6 +390,29 @@ async function deleteInteraction(id) {
   } catch (e) { showToast('Delete failed.'); }
 }
 
+// ── New Meeting Page ────────────────────────────────────────────────────────
+
+async function initNewMeeting() {
+  document.getElementById('mDate').value = new Date().toISOString().slice(0, 10);
+  await populateCompanyDropdown('mCompanyId', null);
+}
+
+async function saveNewMeeting() {
+  const title = document.getElementById('mTitle').value.trim();
+  const date  = document.getElementById('mDate').value;
+  if (!title || !date) { showToast('Title and date are required.'); return; }
+  const data = {
+    title,
+    meeting_date: date,
+    company_id:   document.getElementById('mCompanyId').value || null,
+    notes:        document.getElementById('mNotes').value.trim(),
+  };
+  try {
+    const meeting = await API.post('/api/meetings', data);
+    window.location.href = `/meetings/${meeting.id}`;
+  } catch (e) { showToast('Save failed.'); }
+}
+
 // ── Meetings List ──────────────────────────────────────────────────────────
 
 function initMeetings() {

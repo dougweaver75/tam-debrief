@@ -332,3 +332,9 @@ def test_put_meeting_preserves_summary(client):
     })
     m = client.get(f'/api/meetings/{mid}').get_json()
     assert m['summary'] == 'preserved'
+
+def test_new_meeting_page(client):
+    r = client.get('/meetings/new')
+    assert r.status_code == 200
+    assert b'mTitle' in r.data
+    assert b'mNotes' in r.data

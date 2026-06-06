@@ -2,34 +2,36 @@
 {% block title %}New Meeting — CCRM{% endblock %}
 {% block content %}
 <a href="/meetings" class="back-link">← All Meetings</a>
+<div class="page-header">
+  <h1 class="page-title">New Meeting</h1>
+</div>
 <div class="card">
-  <div class="page-header" style="margin-bottom:20px">
-    <h1 class="page-title">New Meeting</h1>
-  </div>
-  <div class="form-row">
-    <label>Title *</label>
-    <input type="text" id="mTitle" required placeholder="Meeting title">
-  </div>
-  <div class="form-row-2">
+  <form id="newMeetingForm" onsubmit="saveNewMeeting(event)">
     <div class="form-row">
-      <label>Date *</label>
-      <input type="date" id="mDate" required>
+      <label>Title *</label>
+      <input type="text" id="mTitle" required placeholder="Meeting title">
+    </div>
+    <div class="form-row-2">
+      <div class="form-row">
+        <label>Date *</label>
+        <input type="date" id="mDate" required>
+      </div>
+      <div class="form-row">
+        <label>Company</label>
+        <select id="mCompanyId">
+          <option value="">— None —</option>
+        </select>
+      </div>
     </div>
     <div class="form-row">
-      <label>Company</label>
-      <select id="mCompanyId">
-        <option value="">— None —</option>
-      </select>
+      <label>Notes</label>
+      <textarea id="mNotes" style="min-height:160px" placeholder="Meeting notes…"></textarea>
     </div>
-  </div>
-  <div class="form-row">
-    <label>Notes</label>
-    <textarea id="mNotes" style="min-height:160px" placeholder="Meeting notes…"></textarea>
-  </div>
-  <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
-    <a href="/meetings" class="btn btn-secondary">Cancel</a>
-    <button class="btn btn-primary" onclick="saveNewMeeting()">Save Meeting</button>
-  </div>
+    <div class="modal-footer">
+      <a href="/meetings" class="btn btn-secondary">Cancel</a>
+      <button type="submit" class="btn btn-primary">Save Meeting</button>
+    </div>
+  </form>
 </div>
 {% endblock %}
 {% block scripts %}<script>initNewMeeting();</script>{% endblock %}

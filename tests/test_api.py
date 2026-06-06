@@ -338,3 +338,5 @@ def test_new_meeting_page(client):
     assert r.status_code == 200
     assert b'mTitle' in r.data
     assert b'mNotes' in r.data
+    assert b'New Meeting' in r.data
+    assert b'saveNewMeeting' in r.data

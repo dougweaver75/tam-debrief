@@ -397,7 +397,9 @@ async function initNewMeeting() {
   await populateCompanyDropdown('mCompanyId', null);
 }
 
-async function saveNewMeeting() {
+async function saveNewMeeting(e) {
+  e.preventDefault();
+  const btn = document.querySelector('#newMeetingForm [type=submit]');
   const title = document.getElementById('mTitle').value.trim();
   const date  = document.getElementById('mDate').value;
   if (!title || !date) { showToast('Title and date are required.'); return; }
@@ -407,10 +409,14 @@ async function saveNewMeeting() {
     company_id:   document.getElementById('mCompanyId').value || null,
     notes:        document.getElementById('mNotes').value.trim(),
   };
+  btn.disabled = true;
   try {
     const meeting = await API.post('/api/meetings', data);
     window.location.href = `/meetings/${meeting.id}`;
-  } catch (e) { showToast('Save failed.'); }
+  } catch (e) {
+    showToast('Save failed.');
+    btn.disabled = false;
+  }
 }
 
 // ── Meetings List ──────────────────────────────────────────────────────────

@@ -22,3 +22,11 @@ env/
 # IDE
 .vscode/
 .idea/
+
+# Exports / backups
+export/
+export.zip
+*.zip
+
+# Claude Code local settings
+.claude/settings.local.json

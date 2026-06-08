@@ -1,6 +1,6 @@
-# CCRM — Personal CRM
+# TAM Debrief — Personal CRM
 
-Flask + SQLite personal CRM. Single-file backend (`app.py`), Jinja2 templates, vanilla JS frontend. Started as a lightweight contacts/deals tracker and has grown into a meeting-workflow-focused CRM with interaction logging, action items, and a built-in meeting notes sanitization pipeline.
+Flask + SQLite TAM-focused CRM. Single-file backend (`app.py`), Jinja2 templates, vanilla JS frontend. Built around meeting workflows: contacts, companies, interaction logging, action items, deal pipeline, and a built-in notes sanitization + LLM summary pipeline.
 
 ## Running
 
@@ -29,8 +29,14 @@ python -m pytest tests/ -v
 - `static/style.css` — all styles
 - `templates/` — Jinja2 page templates
 
+## Key behaviors
+
+- `app.config['TEMPLATES_AUTO_RELOAD'] = True` — prevents Jinja2 bytecode cache from serving stale templates during development
+- **Stale server warning**: Windows `SO_REUSEADDR` allows multiple Flask processes to bind to the same port. If changes aren't reflected after restart, check for orphaned processes: `netstat -ano | Select-String ":5000"` then `Stop-Process -Id <pid> -Force` for each
+- Company and contact detail pages cross-link associated meetings and action items via `/api/contacts/<id>/meetings`, `/api/contacts/<id>/action-items`, `/api/companies/<id>/meetings`, `/api/companies/<id>/action-items`
+- Redact page (`/sanitize`) includes a "Copy Prompt" button that prepends the full LLM prompt template to the sanitized notes for clipboard. The LLM response textarea is cleared on each new prompt copy to prevent stale content from being saved
+
 ## Future Features (Backlog)
 
 - **Reporting/output** — exportable summaries of activity: meetings per contact, open action items, deal pipeline snapshot. Likely a `/reports` page with printable/CSV views. No external deps — raw SQL + browser print or simple CSV download.
-- **Auto-populate action items from notes** — non-LLM rule-based extraction: scan meeting notes for patterns like "will", "needs to", "action:", "follow up", bullet points starting with a verb, etc. Surface candidates for the user to confirm before adding. Keep it fast and local.
 - **Full-page meeting entry** — replace the meeting creation modal with a dedicated `/meetings/new` page (same layout as the detail view). Reduces clutter, allows richer input upfront (notes, attendees, company) without a cramped popup. Edit and create would share the same page component.

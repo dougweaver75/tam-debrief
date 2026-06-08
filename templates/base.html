@@ -3,54 +3,87 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{% block title %}CCRM{% endblock %}</title>
+  <title>{% block title %}TAM Debrief{% endblock %}</title>
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-  <nav class="sidebar">
-    <div class="sidebar-brand">CCRM</div>
+  <nav class="sidebar" id="sidebar">
+    <div class="sidebar-brand">
+      <span class="brand-text">TAM Debrief</span>
+      <button class="sidebar-toggle" onclick="toggleSidebar()" title="Toggle menu">
+        <span class="material-icons-round">chevron_left</span>
+      </button>
+    </div>
     <ul class="sidebar-nav">
       <li>
-        <a href="/dashboard"
+        <a href="/dashboard" title="Dashboard"
            class="nav-link {% if request.path == '/dashboard' %}active{% endif %}">
-          📊 Dashboard
+          <span class="material-icons-round nav-icon">dashboard</span>
+          <span class="nav-label">Dashboard</span>
         </a>
       </li>
       <li>
-        <a href="/contacts"
+        <a href="/contacts" title="Contacts"
            class="nav-link {% if request.path.startswith('/contacts') %}active{% endif %}">
-          👥 Contacts
+          <span class="material-icons-round nav-icon">people</span>
+          <span class="nav-label">Contacts</span>
         </a>
       </li>
       <li>
-        <a href="/companies"
+        <a href="/companies" title="Companies"
            class="nav-link {% if request.path.startswith('/companies') %}active{% endif %}">
-          🏢 Companies
+          <span class="material-icons-round nav-icon">business</span>
+          <span class="nav-label">Companies</span>
         </a>
       </li>
       <li>
-        <a href="/meetings"
+        <a href="/meetings" title="Meetings"
            class="nav-link {% if request.path.startswith('/meetings') %}active{% endif %}">
-          📅 Meetings
+          <span class="material-icons-round nav-icon">calendar_today</span>
+          <span class="nav-label">Meetings</span>
         </a>
       </li>
       <li>
-        <a href="/sanitize"
+        <a href="/sanitize" title="Redact Notes"
            class="nav-link {% if request.path.startswith('/sanitize') %}active{% endif %}">
-          🔒 Sanitize
+          <span class="material-icons-round nav-icon">security</span>
+          <span class="nav-label">Redact</span>
         </a>
       </li>
     </ul>
   </nav>
-  <main class="main-content">
+  <main class="main-content" id="mainContent">
     {% block content %}{% endblock %}
   </main>
 
   <!-- Modal backdrop (shared) -->
   <div class="modal-backdrop" id="modalBackdrop" onclick="if(event.target===this)closeModal()"></div>
 
+  <!-- Confirm delete modal (shared) -->
+  <div class="modal" id="confirmModal">
+    <div class="modal-title">Confirm Delete</div>
+    <p id="confirmModalMessage" style="color:var(--text-muted);margin-bottom:8px"></p>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-danger" id="confirmModalOk">Delete</button>
+    </div>
+  </div>
+
+  <script src="/static/purify.min.js"></script>
   <script src="/static/marked.min.js"></script>
   <script src="/static/app.js"></script>
   {% block scripts %}{% endblock %}
+
+  <script>
+    (function() {
+      if (localStorage.getItem('sidebarCollapsed') === 'true') {
+        document.body.classList.add('sidebar-collapsed');
+      }
+    })();
+    function toggleSidebar() {
+      document.body.classList.toggle('sidebar-collapsed');
+      localStorage.setItem('sidebarCollapsed', document.body.classList.contains('sidebar-collapsed'));
+    }
+  </script>
 </body>
 </html>

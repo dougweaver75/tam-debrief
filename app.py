@@ -9,6 +9,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH  = os.path.join(BASE_DIR, 'ccrm.db')
 
 app = Flask(__name__)
+app.config['TEMPLATES_AUTO_RELOAD'] = True
 
 
 # ── DB helpers ──────────────────────────────────────────────────────────────
@@ -208,6 +209,32 @@ def api_delete_contact(cid):
 
 # ── API: interactions ────────────────────────────────────────────────────────
 
+@app.route('/api/contacts/<int:cid>/meetings', methods=['GET'])
+def api_contact_meetings(cid):
+    rows = query('''
+        SELECT m.id, m.title, m.meeting_date, co.name AS company_name
+        FROM meetings m
+        JOIN meeting_attendees ma ON ma.meeting_id = m.id
+        LEFT JOIN companies co ON co.id = m.company_id
+        WHERE ma.contact_id = ?
+        ORDER BY m.meeting_date DESC
+    ''', (cid,))
+    return jsonify(as_list(rows))
+
+
+@app.route('/api/contacts/<int:cid>/action-items', methods=['GET'])
+def api_contact_action_items(cid):
+    rows = query('''
+        SELECT ai.id, ai.description, ai.due_date, ai.due_date_text, ai.completed,
+               m.id AS meeting_id, m.title AS meeting_title
+        FROM action_items ai
+        JOIN meetings m ON m.id = ai.meeting_id
+        WHERE ai.assigned_to = ?
+        ORDER BY ai.completed ASC, ai.due_date ASC, ai.created_at DESC
+    ''', (cid,))
+    return jsonify(as_list(rows))
+
+
 @app.route('/api/contacts/<int:cid>/interactions', methods=['GET'])
 def api_list_interactions(cid):
     rows = query(
@@ -318,6 +345,35 @@ def api_company_contacts(coid):
         'SELECT * FROM contacts WHERE company_id=? ORDER BY last_name ASC, first_name ASC',
         (coid,)
     )
+    return jsonify(as_list(rows))
+
+
+@app.route('/api/companies/<int:coid>/meetings', methods=['GET'])
+def api_company_meetings(coid):
+    rows = query('''
+        SELECT m.id, m.title, m.meeting_date,
+               COUNT(ma.contact_id) AS attendee_count
+        FROM meetings m
+        LEFT JOIN meeting_attendees ma ON ma.meeting_id = m.id
+        WHERE m.company_id = ?
+        GROUP BY m.id
+        ORDER BY m.meeting_date DESC
+    ''', (coid,))
+    return jsonify(as_list(rows))
+
+
+@app.route('/api/companies/<int:coid>/action-items', methods=['GET'])
+def api_company_action_items(coid):
+    rows = query('''
+        SELECT ai.id, ai.description, ai.due_date, ai.due_date_text, ai.completed,
+               m.id AS meeting_id, m.title AS meeting_title,
+               c.id AS contact_id, c.first_name, c.last_name
+        FROM action_items ai
+        JOIN meetings m ON m.id = ai.meeting_id
+        LEFT JOIN contacts c ON c.id = ai.assigned_to
+        WHERE m.company_id = ?
+        ORDER BY ai.completed ASC, ai.due_date ASC, ai.created_at DESC
+    ''', (coid,))
     return jsonify(as_list(rows))
 
 

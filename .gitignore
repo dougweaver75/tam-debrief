@@ -30,3 +30,9 @@ export.zip
 
 # Claude Code local settings
 .claude/settings.local.json
+
+# Dev / proposal artifacts
+TAM-Debrief-Proposal.*
+.~lock.*
+UI-REVIEW.md
+static/scheme-preview.html

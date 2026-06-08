@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% block title %}Sanitize Notes — CCRM{% endblock %}
+{% block title %}Redact Notes — TAM Debrief{% endblock %}
 {% block content %}
 <div style="display:flex;gap:20px;height:calc(100vh - 60px);overflow:hidden">
 
@@ -45,7 +45,10 @@
     <div class="card">
       <div class="section-header">
         <div class="card-title" style="margin:0">Sanitized Output</div>
-        <button class="btn btn-secondary btn-sm" id="copyBtn" onclick="copyOutput()" disabled>Copy</button>
+        <div style="display:flex;gap:6px">
+          <button class="btn btn-secondary btn-sm" id="copyBtn" onclick="copyOutput()" disabled>Copy</button>
+          <button class="btn btn-primary btn-sm" id="copyPromptBtn" onclick="copyPrompt()" disabled>Copy Prompt</button>
+        </div>
       </div>
       <textarea id="sanitizedOut" readonly placeholder="Sanitized text appears here…"
                 style="width:100%;min-height:150px;font-family:inherit;resize:vertical;background:var(--bg,#f1f5f9)"></textarea>
@@ -54,7 +57,7 @@
     <div class="card">
       <div class="card-title">LLM Response</div>
       <p style="font-size:0.8rem;color:var(--text-muted,#64748b);margin-bottom:8px">
-        Copy the sanitized output above, run it through your LLM, then paste the result here.
+        Click <strong>Copy Prompt</strong> above to copy the full prompt + sanitized notes, paste into your LLM, then paste the response here.
       </p>
       <textarea id="llmResponse" placeholder="Paste the LLM's organized summary here…"
                 style="width:100%;min-height:150px;font-family:inherit;resize:vertical"></textarea>
@@ -223,7 +226,8 @@ function sanitize() {
   const result   = raw.replace(combined, match => maskPhrase(match));
 
   document.getElementById('sanitizedOut').value = result;
-  document.getElementById('copyBtn').disabled   = false;
+  document.getElementById('copyBtn').disabled       = false;
+  document.getElementById('copyPromptBtn').disabled = false;
 }
 
 function copyOutput() {
@@ -232,6 +236,58 @@ function copyOutput() {
   navigator.clipboard.writeText(text).then(
     ()  => showToast('Copied to clipboard.'),
     ()  => { document.getElementById('sanitizedOut').select(); document.execCommand('copy'); showToast('Copied.'); }
+  );
+}
+
+const LLM_PROMPT_TEMPLATE = `You are a meeting notes assistant for a Technical Account Manager.
+
+The notes below have been sanitized — people and company names have been masked (e.g. [B*** S***], [A**** C***]). Do not attempt to unmask them.
+
+Your output must have exactly two sections, in this order:
+
+---
+
+## Summary
+
+Write a concise 3–5 paragraph narrative summary of the meeting. Cover:
+- The purpose and context of the meeting
+- Key topics discussed and decisions made
+- Notable concerns, blockers, or open questions
+- Next steps at a high level
+
+---
+
+## Action Items
+
+List every commitment, follow-up, or task identified in the notes as a markdown table with exactly these three columns:
+
+| Action Item | Owner | Due |
+|---|---|---|
+| <description of task> | <masked name or role, e.g. [B*** S***] or "TAM"> | <due date or timeframe, e.g. "Jun 15" or "Next week" or "—"> |
+
+Rules for the table:
+- One row per discrete action item
+- Keep descriptions concise but specific (what needs to be done, not why)
+- Use the masked name exactly as it appears in the notes for Owner; if unassigned write "—"
+- If no due date is mentioned write "—"
+- Do not add rows for items already completed during the meeting
+
+---
+
+SANITIZED NOTES:
+`;
+
+function copyPrompt() {
+  const notes = document.getElementById('sanitizedOut').value;
+  if (!notes) return;
+  const full = LLM_PROMPT_TEMPLATE + notes;
+  navigator.clipboard.writeText(full).then(
+    () => {
+      document.getElementById('llmResponse').value = '';
+      showToast('Prompt copied — paste your LLM response below.');
+      document.getElementById('llmResponse').focus();
+    },
+    () => showToast('Copy failed — use the Copy button instead.')
   );
 }
 

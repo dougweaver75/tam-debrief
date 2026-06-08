@@ -1,5 +1,10 @@
 // ── Utilities ──────────────────────────────────────────────────────────────
 
+function icon(name, size) {
+  const style = size ? ` style="font-size:${size}"` : '';
+  return `<span class="material-icons-round icon-sm"${style}>${name}</span>`;
+}
+
 const API = {
   async get(url) {
     const r = await fetch(url);
@@ -45,6 +50,23 @@ function closeModal() {
   document.getElementById('modalBackdrop').classList.remove('open');
 }
 
+function confirmDelete(message, onConfirm) {
+  document.getElementById('confirmModalMessage').textContent = message;
+  document.getElementById('confirmModalOk').onclick = () => { closeModal(); onConfirm(); };
+  openModal('confirmModal');
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('.modal').forEach(m => {
+    const btn = document.createElement('button');
+    btn.className = 'modal-close';
+    btn.title = 'Close';
+    btn.innerHTML = '<span class="material-icons-round">close</span>';
+    btn.addEventListener('click', closeModal);
+    m.insertBefore(btn, m.firstChild);
+  });
+});
+
 function fmtDate(s) {
   if (!s) return '—';
   const d = new Date(s.includes('T') ? s : s + 'T00:00:00');
@@ -58,6 +80,14 @@ function badgeHtml(cls, text) {
 function esc(s) {
   if (s == null) return '';
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+function safeUrl(url) {
+  if (!url) return null;
+  try {
+    const u = new URL(url);
+    return (u.protocol === 'http:' || u.protocol === 'https:') ? url : null;
+  } catch { return null; }
 }
 
 async function populateCompanyDropdown(selectId, selectedId) {
@@ -156,7 +186,7 @@ function updateSortArrows() {
   ['last_name','company','email','created_at'].forEach(col => {
     const el = document.getElementById('sort_' + col);
     if (!el) return;
-    el.textContent = _sortCol === col ? (_sortDir === 'asc' ? '↑' : '↓') : '';
+    el.innerHTML = _sortCol === col ? icon(_sortDir === 'asc' ? 'arrow_upward' : 'arrow_downward', '12px') : '';
   });
 }
 
@@ -216,13 +246,14 @@ async function submitContact(e) {
   } catch (e) { showToast('Save failed.'); }
 }
 
-async function deleteContact(id) {
-  if (!confirm('Delete this contact? This will also remove their interactions.')) return;
-  try {
-    await API.del(`/api/contacts/${id}`);
-    showToast('Contact deleted.');
-    loadContacts(document.getElementById('searchInput')?.value || '');
-  } catch (e) { showToast('Delete failed.'); }
+function deleteContact(id) {
+  confirmDelete('Delete this contact? This will also remove their interactions.', async () => {
+    try {
+      await API.del(`/api/contacts/${id}`);
+      showToast('Contact deleted.');
+      loadContacts(document.getElementById('searchInput')?.value || '');
+    } catch (e) { showToast('Delete failed.'); }
+  });
 }
 
 // ── Contact Detail ─────────────────────────────────────────────────────────
@@ -235,9 +266,11 @@ function initContactDetail(contactId) {
 
 async function loadContactDetail(contactId) {
   try {
-    const [contact, interactions] = await Promise.all([
+    const [contact, interactions, meetings, actionItems] = await Promise.all([
       API.get(`/api/contacts/${contactId}`),
-      API.get(`/api/contacts/${contactId}/interactions`)
+      API.get(`/api/contacts/${contactId}/interactions`),
+      API.get(`/api/contacts/${contactId}/meetings`),
+      API.get(`/api/contacts/${contactId}/action-items`)
     ]);
     _currentContact = contact;
     if (contact.company_id) {
@@ -248,6 +281,8 @@ async function loadContactDetail(contactId) {
     }
     renderContactDetail(contact);
     renderInteractions(interactions);
+    renderContactMeetings(meetings);
+    renderContactActionItems(actionItems);
   } catch (e) {
     document.getElementById('contactDetailRoot').innerHTML =
       '<p class="empty-state">Contact not found.</p>';
@@ -266,7 +301,7 @@ function renderContactDetail(c) {
     ? `<a href="/contacts/${c._reportsTo.id}" class="table-link">${esc(c._reportsTo.first_name)} ${esc(c._reportsTo.last_name)}</a>`
     : '—';
   document.getElementById('contactDetailRoot').innerHTML = `
-    <a href="/contacts" class="back-link">← All Contacts</a>
+    <a href="/contacts" class="back-link">${icon('arrow_back')} All Contacts</a>
     <div class="card">
       <div class="contact-header">
         <div style="display:flex;gap:14px;align-items:flex-start">
@@ -338,12 +373,13 @@ async function submitContactDetail(e) {
   } catch (e) { showToast('Save failed.'); }
 }
 
-async function deleteContactDetail(id) {
-  if (!confirm('Delete this contact and all their interactions?')) return;
-  try {
-    await API.del(`/api/contacts/${id}`);
-    window.location.href = '/contacts';
-  } catch (e) { showToast('Delete failed.'); }
+function deleteContactDetail(id) {
+  confirmDelete('Delete this contact and all their interactions?', async () => {
+    try {
+      await API.del(`/api/contacts/${id}`);
+      window.location.href = '/contacts';
+    } catch (e) { showToast('Delete failed.'); }
+  });
 }
 
 // ── Interactions ───────────────────────────────────────────────────────────
@@ -364,7 +400,7 @@ function renderInteractions(interactions) {
         </div>
         <div class="interaction-summary">${esc(i.summary)}</div>
       </div>
-      <button class="btn btn-danger btn-sm" onclick="deleteInteraction(${i.id})">✕</button>
+      <button class="btn btn-danger btn-sm" onclick="deleteInteraction(${i.id})" title="Delete">${icon('close')}</button>
     </div>
   `).join('');
 }
@@ -392,14 +428,52 @@ async function submitInteraction(e) {
   } catch (e) { showToast('Failed to log interaction.'); }
 }
 
-async function deleteInteraction(id) {
-  if (!confirm('Delete this interaction?')) return;
-  try {
-    await API.del(`/api/interactions/${id}`);
-    showToast('Interaction deleted.');
-    const interactions = await API.get(`/api/contacts/${_currentContact.id}/interactions`);
-    renderInteractions(interactions);
-  } catch (e) { showToast('Delete failed.'); }
+function deleteInteraction(id) {
+  confirmDelete('Delete this interaction?', async () => {
+    try {
+      await API.del(`/api/interactions/${id}`);
+      showToast('Interaction deleted.');
+      const interactions = await API.get(`/api/contacts/${_currentContact.id}/interactions`);
+      renderInteractions(interactions);
+    } catch (e) { showToast('Delete failed.'); }
+  });
+}
+
+function renderContactMeetings(meetings) {
+  const el = document.getElementById('contactMeetingsList');
+  if (!el) return;
+  if (!meetings.length) { el.innerHTML = '<p class="empty-state">No meetings found.</p>'; return; }
+  el.innerHTML = `<div class="table-wrap"><table>
+    <thead><tr><th>Title</th><th>Date</th><th>Company</th></tr></thead>
+    <tbody>
+    ${meetings.map(m => `
+      <tr>
+        <td><a href="/meetings/${m.id}" class="table-link">${esc(m.title)}</a></td>
+        <td>${fmtDate(m.meeting_date)}</td>
+        <td>${esc(m.company_name) || '—'}</td>
+      </tr>
+    `).join('')}
+    </tbody>
+  </table></div>`;
+}
+
+function renderContactActionItems(items) {
+  const el = document.getElementById('contactActionItemsList');
+  if (!el) return;
+  if (!items.length) { el.innerHTML = '<p class="empty-state">No action items assigned.</p>'; return; }
+  el.innerHTML = items.map(a => `
+    <div class="action-item-row${a.completed ? ' done' : ''}" id="ai-row-${a.id}">
+      <input type="checkbox" ${a.completed ? 'checked' : ''}
+             onchange="toggleActionItem(${a.id})" style="margin-right:10px;cursor:pointer">
+      <div style="flex:1">
+        <div class="ai-description">${esc(a.description)}</div>
+        <div class="ai-meta">
+          ${a.due_date ? `<span>Due: ${fmtDate(a.due_date)}</span>` : (a.due_date_text ? `<span>${esc(a.due_date_text)}</span>` : '')}
+          <span>${icon('calendar_today', '13px')} <a href="/meetings/${a.meeting_id}" class="table-link">${esc(a.meeting_title)}</a></span>
+        </div>
+      </div>
+    </div>
+  `).join('');
 }
 
 // ── New Meeting Page ────────────────────────────────────────────────────────
@@ -466,13 +540,14 @@ function renderMeetings(meetings) {
   `).join('');
 }
 
-async function deleteMeeting(id) {
-  if (!confirm('Delete this meeting and all its action items?')) return;
-  try {
-    await API.del(`/api/meetings/${id}`);
-    showToast('Meeting deleted.');
-    loadMeetings();
-  } catch (e) { showToast('Delete failed.'); }
+function deleteMeeting(id) {
+  confirmDelete('Delete this meeting and all its action items?', async () => {
+    try {
+      await API.del(`/api/meetings/${id}`);
+      showToast('Meeting deleted.');
+      loadMeetings();
+    } catch (e) { showToast('Delete failed.'); }
+  });
 }
 
 // ── Meeting Detail ─────────────────────────────────────────────────────────
@@ -505,7 +580,7 @@ async function loadMeetingDetail(meetingId) {
 function renderMeetingDetail(m, editMode = false) {
   if (editMode) {
     document.getElementById('meetingDetailRoot').innerHTML = `
-      <a href="/meetings" class="back-link">← All Meetings</a>
+      <a href="/meetings" class="back-link">${icon('arrow_back')} All Meetings</a>
       <div class="card">
         <div class="form-row">
           <label>Title *</label>
@@ -534,7 +609,7 @@ function renderMeetingDetail(m, editMode = false) {
     populateCompanyDropdown('mCompanyId', m.company_id);
   } else {
     document.getElementById('meetingDetailRoot').innerHTML = `
-      <a href="/meetings" class="back-link">← All Meetings</a>
+      <a href="/meetings" class="back-link">${icon('arrow_back')} All Meetings</a>
       <div class="card">
         <div class="contact-header">
           <div>
@@ -546,24 +621,33 @@ function renderMeetingDetail(m, editMode = false) {
             <button class="btn btn-danger btn-sm" onclick="deleteMeetingDetail(${m.id})">Delete</button>
           </div>
         </div>
-        ${m.summary ? `<div class="contact-fields">
-          <div class="field-row" style="grid-column:1/-1">
-            <span class="field-label">Summary</span>
-            <div class="field-value md-content">${marked.parse(m.summary)}</div>
-          </div>
+        ${m.summary ? `
+        <div class="notes-section">
+          <div class="notes-section-title">LLM Summary</div>
+          <div class="md-content">${DOMPurify.sanitize(marked.parse(m.summary))}</div>
         </div>` : ''}
-        ${m.notes ? `<div class="contact-fields">
-          <div class="field-row" style="grid-column:1/-1">
-            <span class="field-label">Notes</span>
-            <span class="field-value" style="white-space:pre-wrap">${esc(m.notes)}</span>
+        ${m.notes ? `
+        <div class="notes-section${m.summary ? ' collapsed' : ''}" id="rawNotesSection">
+          <div class="notes-section-title${m.summary ? ' toggleable' : ''}"
+               ${m.summary ? 'onclick="toggleRawNotes()"' : ''}>
+            Raw Notes
+            ${m.summary ? `<span class="material-icons-round toggle-chevron">expand_more</span>` : ''}
+          </div>
+          <div class="notes-section-content">
+            <div style="white-space:pre-wrap;font-size:var(--fs-base)">${esc(m.notes)}</div>
           </div>
         </div>` : ''}
         <div style="padding:12px 16px 8px;text-align:right">
-          <a href="/sanitize?meeting_id=${m.id}" class="btn btn-secondary btn-sm">🔒 Sanitize Notes</a>
+          <a href="/sanitize?meeting_id=${m.id}" class="btn btn-secondary btn-sm">${icon('security')} Redact Notes</a>
         </div>
       </div>
     `;
   }
+}
+
+function toggleRawNotes() {
+  const section = document.getElementById('rawNotesSection');
+  if (section) section.classList.toggle('collapsed');
 }
 
 function enterMeetingEditMode() {
@@ -625,7 +709,7 @@ async function renderAttendeesWithDropdown(meetingId, attendees) {
         <a href="/contacts/${c.id}" class="table-link">${esc(c.last_name)}, ${esc(c.first_name)}</a>
         ${c.title ? `<span style="color:var(--text-muted);margin-left:8px">${esc(c.title)}</span>` : ''}
       </div>
-      <button class="btn btn-danger btn-sm" onclick="removeAttendee(${c.id})">✕</button>
+      <button class="btn btn-danger btn-sm" onclick="removeAttendee(${c.id})" title="Remove">${icon('close')}</button>
     </div>
   `).join('');
 }
@@ -665,21 +749,24 @@ async function submitNewPerson(e) {
   } catch (e) { showToast('Failed to create person.'); }
 }
 
-async function removeAttendee(contactId) {
-  try {
-    await API.del(`/api/meetings/${_currentMeeting.id}/attendees/${contactId}`);
-    showToast('Attendee removed.');
-    const attendees = await API.get(`/api/meetings/${_currentMeeting.id}/attendees`);
-    await renderAttendeesWithDropdown(_currentMeeting.id, attendees);
-  } catch (e) { showToast('Failed to remove attendee.'); }
+function removeAttendee(contactId) {
+  confirmDelete('Remove this attendee from the meeting?', async () => {
+    try {
+      await API.del(`/api/meetings/${_currentMeeting.id}/attendees/${contactId}`);
+      showToast('Attendee removed.');
+      const attendees = await API.get(`/api/meetings/${_currentMeeting.id}/attendees`);
+      await renderAttendeesWithDropdown(_currentMeeting.id, attendees);
+    } catch (e) { showToast('Failed to remove attendee.'); }
+  });
 }
 
-async function deleteMeetingDetail(id) {
-  if (!confirm('Delete this meeting and all its action items?')) return;
-  try {
-    await API.del(`/api/meetings/${id}`);
-    window.location.href = '/meetings';
-  } catch (e) { showToast('Delete failed.'); }
+function deleteMeetingDetail(id) {
+  confirmDelete('Delete this meeting and all its action items?', async () => {
+    try {
+      await API.del(`/api/meetings/${id}`);
+      window.location.href = '/meetings';
+    } catch (e) { showToast('Delete failed.'); }
+  });
 }
 
 function parseActionItemsFromSummary(markdown) {
@@ -688,6 +775,7 @@ function parseActionItemsFromSummary(markdown) {
   let inActionSection = false;
   let headerSeen = false;
   let separatorSeen = false;
+  let colDesc = 0, colOwner = 1, colDue = 2;
 
   for (const line of lines) {
     const trimmed = line.trim();
@@ -695,18 +783,28 @@ function parseActionItemsFromSummary(markdown) {
       inActionSection = true;
       headerSeen = false;
       separatorSeen = false;
+      colDesc = 0; colOwner = 1; colDue = 2;
       continue;
     }
     if (!inActionSection) continue;
     if (/^#{1,4}\s+/.test(trimmed) && !/\b(action|to[-\s]?do)\b/i.test(trimmed)) break;
     if (!trimmed.startsWith('|') || !trimmed.endsWith('|')) continue;
     const cells = trimmed.split('|').map(c => c.trim()).filter(c => c !== '');
-    if (!headerSeen) { headerSeen = true; continue; }
+    if (!headerSeen) {
+      headerSeen = true;
+      cells.forEach((h, idx) => {
+        const lh = h.toLowerCase();
+        if (/task|action|item|description|what/.test(lh))      colDesc  = idx;
+        else if (/owner|assign|person|who|responsible/.test(lh)) colOwner = idx;
+        else if (/due|date|deadline|when|target/.test(lh))       colDue   = idx;
+      });
+      continue;
+    }
     if (!separatorSeen && cells.every(c => /^[-: ]+$/.test(c))) { separatorSeen = true; continue; }
-    const description = cells[0] ? cells[0].replace(/\*+/g, '').trim() : '';
+    const description = cells[colDesc]  ? cells[colDesc].replace(/\*+/g, '').trim()  : '';
     if (!description || /^[-:]+$/.test(description)) continue;
-    const ownerHint   = cells[1] ? cells[1].replace(/\*+/g, '').trim() : '';
-    const dueDateHint = cells[2] ? cells[2].replace(/\*+/g, '').trim() : '';
+    const ownerHint   = cells[colOwner] ? cells[colOwner].replace(/\*+/g, '').trim() : '';
+    const dueDateHint = cells[colDue]   ? cells[colDue].replace(/\*+/g, '').trim()   : '';
     candidates.push({ description, ownerHint, dueDateHint });
   }
   return candidates;
@@ -809,12 +907,12 @@ function renderActionItems(items) {
         <div class="ai-description">${esc(a.description)}</div>
         <div class="ai-meta">
           ${a.due_date ? `<span>Due: ${fmtDate(a.due_date)}</span>` : (a.due_date_text ? `<span>${esc(a.due_date_text)}</span>` : '')}
-          ${a.first_name ? `<span>→ ${esc(a.first_name)} ${esc(a.last_name)}</span>` : ''}
+          ${a.first_name ? `<span>${icon('person', '13px')} ${esc(a.first_name)} ${esc(a.last_name)}</span>` : ''}
         </div>
       </div>
       <div style="display:flex;gap:6px">
         <button class="btn btn-secondary btn-sm" onclick="openEditActionItem(${a.id})">Edit</button>
-        <button class="btn btn-danger btn-sm" onclick="deleteActionItem(${a.id})">✕</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteActionItem(${a.id})" title="Delete">${icon('close')}</button>
       </div>
     </div>
   `).join('');
@@ -875,14 +973,15 @@ async function toggleActionItem(id) {
   } catch (e) { showToast('Failed to update.'); }
 }
 
-async function deleteActionItem(id) {
-  if (!confirm('Delete this action item?')) return;
-  try {
-    await API.del(`/api/action_items/${id}`);
-    showToast('Action item deleted.');
-    const items = await API.get(`/api/meetings/${_currentMeeting.id}/action_items`);
-    renderActionItems(items);
-  } catch (e) { showToast('Delete failed.'); }
+function deleteActionItem(id) {
+  confirmDelete('Delete this action item?', async () => {
+    try {
+      await API.del(`/api/action_items/${id}`);
+      showToast('Action item deleted.');
+      const items = await API.get(`/api/meetings/${_currentMeeting.id}/action_items`);
+      renderActionItems(items);
+    } catch (e) { showToast('Delete failed.'); }
+  });
 }
 
 // ── Companies List ─────────────────────────────────────────────────────────
@@ -915,7 +1014,7 @@ function renderCompanies(companies) {
     <tr>
       <td><a href="/companies/${co.id}" class="table-link">${esc(co.name)}</a></td>
       <td>${esc(co.industry) || '—'}</td>
-      <td>${co.website ? `<a href="${esc(co.website)}" target="_blank" rel="noopener">${esc(co.website)}</a>` : '—'}</td>
+      <td>${safeUrl(co.website) ? `<a href="${esc(co.website)}" target="_blank" rel="noopener">${esc(co.website)}</a>` : esc(co.website) || '—'}</td>
       <td class="table-actions">
         <button class="btn btn-secondary btn-sm" onclick="openEditCompany(${co.id})">Edit</button>
         <button class="btn btn-danger btn-sm" onclick="deleteCompany(${co.id})">Delete</button>
@@ -973,13 +1072,14 @@ async function submitCompany(e) {
   } catch (e) { showToast('Save failed.'); }
 }
 
-async function deleteCompany(id) {
-  if (!confirm('Delete this company?')) return;
-  try {
-    await API.del(`/api/companies/${id}`);
-    showToast('Company deleted.');
-    loadCompanies(document.getElementById('companySearchInput')?.value || '');
-  } catch (e) { showToast('Delete failed.'); }
+function deleteCompany(id) {
+  confirmDelete('Delete this company?', async () => {
+    try {
+      await API.del(`/api/companies/${id}`);
+      showToast('Company deleted.');
+      loadCompanies(document.getElementById('companySearchInput')?.value || '');
+    } catch (e) { showToast('Delete failed.'); }
+  });
 }
 
 // ── Company Detail ─────────────────────────────────────────────────────────
@@ -992,13 +1092,17 @@ function initCompanyDetail(companyId) {
 
 async function loadCompanyDetail(companyId) {
   try {
-    const [company, contacts] = await Promise.all([
+    const [company, contacts, meetings, actionItems] = await Promise.all([
       API.get(`/api/companies/${companyId}`),
-      API.get(`/api/companies/${companyId}/contacts`)
+      API.get(`/api/companies/${companyId}/contacts`),
+      API.get(`/api/companies/${companyId}/meetings`),
+      API.get(`/api/companies/${companyId}/action-items`)
     ]);
     _currentCompany = company;
     renderCompanyDetail(company);
     renderCompanyContacts(contacts);
+    renderCompanyMeetings(meetings);
+    renderCompanyActionItems(actionItems);
   } catch (e) {
     document.getElementById('companyDetailRoot').innerHTML =
       '<p class="empty-state">Company not found.</p>';
@@ -1007,7 +1111,7 @@ async function loadCompanyDetail(companyId) {
 
 function renderCompanyDetail(co) {
   document.getElementById('companyDetailRoot').innerHTML = `
-    <a href="/companies" class="back-link">← All Companies</a>
+    <a href="/companies" class="back-link">${icon('arrow_back')} All Companies</a>
     <div class="card">
       <div class="contact-header">
         <div>
@@ -1021,7 +1125,7 @@ function renderCompanyDetail(co) {
       </div>
       <div class="contact-fields">
         <div class="field-row"><span class="field-label">Website</span>
-          <span class="field-value">${co.website ? `<a href="${esc(co.website)}" target="_blank" rel="noopener">${esc(co.website)}</a>` : '—'}</span></div>
+          <span class="field-value">${safeUrl(co.website) ? `<a href="${esc(co.website)}" target="_blank" rel="noopener">${esc(co.website)}</a>` : esc(co.website) || '—'}</span></div>
         <div class="field-row"><span class="field-label">Address</span>
           <span class="field-value">${esc(co.address) || '—'}</span></div>
         ${co.notes ? `<div class="field-row" style="grid-column:1/-1">
@@ -1052,6 +1156,44 @@ function renderCompanyContacts(contacts) {
     `).join('')}
     </tbody>
   </table></div>`;
+}
+
+function renderCompanyMeetings(meetings) {
+  const el = document.getElementById('companyMeetingsList');
+  if (!el) return;
+  if (!meetings.length) { el.innerHTML = '<p class="empty-state">No meetings for this company.</p>'; return; }
+  el.innerHTML = `<div class="table-wrap"><table>
+    <thead><tr><th>Title</th><th>Date</th><th>Attendees</th></tr></thead>
+    <tbody>
+    ${meetings.map(m => `
+      <tr>
+        <td><a href="/meetings/${m.id}" class="table-link">${esc(m.title)}</a></td>
+        <td>${fmtDate(m.meeting_date)}</td>
+        <td>${m.attendee_count}</td>
+      </tr>
+    `).join('')}
+    </tbody>
+  </table></div>`;
+}
+
+function renderCompanyActionItems(items) {
+  const el = document.getElementById('companyActionItemsList');
+  if (!el) return;
+  if (!items.length) { el.innerHTML = '<p class="empty-state">No action items for this company.</p>'; return; }
+  el.innerHTML = items.map(a => `
+    <div class="action-item-row${a.completed ? ' done' : ''}" id="ai-row-${a.id}">
+      <input type="checkbox" ${a.completed ? 'checked' : ''}
+             onchange="toggleActionItem(${a.id})" style="margin-right:10px;cursor:pointer">
+      <div style="flex:1">
+        <div class="ai-description">${esc(a.description)}</div>
+        <div class="ai-meta">
+          ${a.due_date ? `<span>Due: ${fmtDate(a.due_date)}</span>` : (a.due_date_text ? `<span>${esc(a.due_date_text)}</span>` : '')}
+          ${a.first_name ? `<span>${icon('person', '13px')} <a href="/contacts/${a.contact_id}" class="table-link">${esc(a.first_name)} ${esc(a.last_name)}</a></span>` : ''}
+          <span>${icon('calendar_today', '13px')} <a href="/meetings/${a.meeting_id}" class="table-link">${esc(a.meeting_title)}</a></span>
+        </div>
+      </div>
+    </div>
+  `).join('');
 }
 
 function openEditCompanyDetail() {
@@ -1085,12 +1227,13 @@ async function submitCompanyDetail(e) {
   } catch (e) { showToast('Save failed.'); }
 }
 
-async function deleteCompanyDetail(id) {
-  if (!confirm('Delete this company?')) return;
-  try {
-    await API.del(`/api/companies/${id}`);
-    window.location.href = '/companies';
-  } catch (e) { showToast('Delete failed.'); }
+function deleteCompanyDetail(id) {
+  confirmDelete('Delete this company?', async () => {
+    try {
+      await API.del(`/api/companies/${id}`);
+      window.location.href = '/companies';
+    } catch (e) { showToast('Delete failed.'); }
+  });
 }
 
 // ── Dashboard ──────────────────────────────────────────────────────────────
@@ -1125,7 +1268,7 @@ function renderDashboard(data) {
             <div class="ai-meta">
               <a href="/meetings/${a.meeting_id}" class="table-link">${esc(a.meeting_title)}</a>
               ${a.due_date ? `<span>Due: ${fmtDate(a.due_date)}</span>` : ''}
-              ${a.first_name ? `<span>→ ${esc(a.first_name)} ${esc(a.last_name)}</span>` : ''}
+              ${a.first_name ? `<span>${icon('person', '13px')} ${esc(a.first_name)} ${esc(a.last_name)}</span>` : ''}
             </div>
           </div>
         </div>

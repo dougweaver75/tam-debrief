@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% block title %}Company — CCRM{% endblock %}
+{% block title %}Company — TAM Debrief{% endblock %}
 {% block content %}
 <div id="companyDetailRoot">
   <p class="empty-state">Loading…</p>
@@ -9,6 +9,21 @@
   <div class="card">
     <div class="card-title">Contacts</div>
     <div id="companyContactsList"></div>
+  </div>
+</div>
+
+<div class="dash-row">
+  <div id="companyMeetingsSection" class="dash-col-half" style="display:none">
+    <div class="card">
+      <div class="card-title">Meetings</div>
+      <div id="companyMeetingsList"></div>
+    </div>
+  </div>
+  <div id="companyActionItemsSection" class="dash-col-half" style="display:none">
+    <div class="card">
+      <div class="card-title">Action Items</div>
+      <div id="companyActionItemsList"></div>
+    </div>
   </div>
 </div>
 
@@ -35,5 +50,7 @@
 <script>
   initCompanyDetail({{ company_id }});
   document.getElementById('companyContactsSection').style.display = '';
+  document.getElementById('companyMeetingsSection').style.display = '';
+  document.getElementById('companyActionItemsSection').style.display = '';
 </script>
 {% endblock %}

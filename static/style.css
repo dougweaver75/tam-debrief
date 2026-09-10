@@ -621,16 +621,30 @@ textarea { resize: vertical; min-height: 72px; }
 .md-content pre code { background: none; padding: 0; }
 .md-content blockquote { border-left: 3px solid var(--border, #e2e8f0); margin: 0.5em 0; padding-left: 0.75em; color: var(--text-muted, #64748b); }
 
-/* ── Dashboard company chips ────────────────────────────────────────────── */
-#dashCompanies { display: flex; flex-wrap: wrap; gap: 8px; }
-.company-chip {
-  display: inline-block;
-  padding: 5px 12px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  font-size: var(--fs-sm);
-  color: var(--text-muted);
-  text-decoration: none;
-  transition: background .12s, color .12s;
+/* ── Dashboard company cards ────────────────────────────────────────────── */
+#dashCompanies {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 10px;
 }
-.company-chip:hover { background: var(--bg); color: var(--text); }
+.company-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+  text-decoration: none;
+  color: var(--text);
+  transition: border-color .12s, box-shadow .12s;
+}
+.company-card:hover { border-color: var(--primary); box-shadow: var(--shadow); }
+.company-card-name { font-weight: 600; font-size: var(--fs-sm); }
+.company-card-stats {
+  display: flex;
+  gap: 12px;
+  color: var(--text-muted);
+  font-size: var(--fs-xs);
+}
+.company-card-stats span { display: inline-flex; align-items: center; gap: 3px; }

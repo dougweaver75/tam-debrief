@@ -9,7 +9,11 @@ run.bat          # installs deps + starts server + opens browser
 python app.py    # dev start (browser opens after 1.2s via threading.Timer)
 ```
 
-Server: http://localhost:5000/
+Server: http://localhost:5000/ (binds to 127.0.0.1 only — not exposed beyond localhost)
+
+## Key Constraints
+
+- No ORM — raw `sqlite3` throughout, no SQLAlchemy or similar.
 
 ## Tests
 

@@ -28,6 +28,7 @@ def test_dashboard_empty(client):
     assert r.status_code == 200
     assert data['total_contacts'] == 0
     assert data['open_action_items'] == 0
+    assert data['companies'] == []
 
 def test_create_contact(client):
     r = client.post('/api/contacts', json={
@@ -124,6 +125,17 @@ def test_companies_table_exists(client):
     r = client.get('/api/companies')
     assert r.status_code == 200
     assert r.get_json() == []
+
+def test_dashboard_company_counts(client):
+    co = client.post('/api/companies', json={'name': 'Acme Corp'}).get_json()
+    client.post('/api/contacts', json={'first_name': 'A', 'last_name': 'B', 'company_id': co['id']})
+    client.post('/api/meetings', json={'title': 'Kickoff', 'meeting_date': '2026-05-28', 'company_id': co['id']})
+    d = client.get('/api/dashboard').get_json()
+    assert len(d['companies']) == 1
+    row = d['companies'][0]
+    assert row['name'] == 'Acme Corp'
+    assert row['contact_count'] == 1
+    assert row['meeting_count'] == 1
 
 def test_meetings_table_exists(client):
     r = client.get('/api/meetings')

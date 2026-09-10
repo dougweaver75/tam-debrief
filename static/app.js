@@ -1273,11 +1273,8 @@ function initDashboard() {
 
 async function loadDashboard() {
   try {
-    const [data, companies] = await Promise.all([
-      API.get('/api/dashboard'),
-      API.get('/api/companies'),
-    ]);
-    renderDashboard(data, companies);
+    const data = await API.get('/api/dashboard');
+    renderDashboard(data);
   } catch (e) {
     document.getElementById('dashRoot').innerHTML = '<p class="empty-state">Error loading dashboard.</p>';
     const c = document.getElementById('dashCompanies');
@@ -1285,16 +1282,23 @@ async function loadDashboard() {
   }
 }
 
-function renderDashboard(data, companies) {
+function renderDashboard(data) {
   document.getElementById('statContacts').textContent    = data.total_contacts;
   document.getElementById('statMeetings').textContent    = data.total_meetings;
   document.getElementById('statActionItems').textContent = data.open_action_items;
 
   const coEl = document.getElementById('dashCompanies');
   if (coEl) {
+    const companies = data.companies || [];
     coEl.innerHTML = companies.length
-      ? companies.map(c =>
-          `<a href="/companies/${c.id}" class="company-chip">${esc(c.name)}</a>`
+      ? companies.map(c => `
+        <a href="/companies/${c.id}" class="company-card">
+          <div class="company-card-name">${esc(c.name)}</div>
+          <div class="company-card-stats">
+            <span>${icon('people', '13px')} ${c.contact_count}</span>
+            <span>${icon('calendar_today', '13px')} ${c.meeting_count}</span>
+          </div>
+        </a>`
         ).join('')
       : '<p class="empty-state">No companies yet.</p>';
   }

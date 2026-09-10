@@ -546,12 +546,19 @@ def api_dashboard():
         'ORDER BY CASE WHEN a.due_date IS NULL THEN 1 ELSE 0 END ASC, a.due_date ASC '
         'LIMIT 20'
     )
+    companies = query(
+        'SELECT co.id, co.name, '
+        '(SELECT COUNT(*) FROM contacts WHERE company_id=co.id) AS contact_count, '
+        '(SELECT COUNT(*) FROM meetings  WHERE company_id=co.id) AS meeting_count '
+        'FROM companies co ORDER BY co.name COLLATE NOCASE ASC'
+    )
     return jsonify({
         'total_contacts':       total,
         'total_meetings':       meetings,
         'open_action_items':    open_ai,
         'recent_interactions':  as_list(recent),
         'action_items':         as_list(action_items),
+        'companies':            as_list(companies),
     })
 
 

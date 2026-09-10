@@ -71,6 +71,9 @@ def migrate_db():
     cols_ai = {r[1] for r in db.execute("PRAGMA table_info(action_items)")}
     if 'due_date_text' not in cols_ai:
         db.execute("ALTER TABLE action_items ADD COLUMN due_date_text TEXT")
+    cols_co = {r[1] for r in db.execute("PRAGMA table_info(companies)")}
+    if 'logo' not in cols_co:
+        db.execute("ALTER TABLE companies ADD COLUMN logo TEXT DEFAULT ''")
     db.commit()
     db.close()
 
@@ -297,10 +300,10 @@ def api_create_company():
         return jsonify({'error': 'name is required'}), 400
     ts  = now_iso()
     cur = execute(
-        'INSERT INTO companies (name,industry,website,address,notes,created_at,updated_at) '
-        'VALUES (?,?,?,?,?,?,?)',
+        'INSERT INTO companies (name,industry,website,address,notes,logo,created_at,updated_at) '
+        'VALUES (?,?,?,?,?,?,?,?)',
         (name, data.get('industry',''), data.get('website',''),
-         data.get('address',''), data.get('notes',''), ts, ts)
+         data.get('address',''), data.get('notes',''), data.get('logo',''), ts, ts)
     )
     return jsonify(as_dict(query('SELECT * FROM companies WHERE id=?', (cur.lastrowid,), one=True))), 201
 
@@ -315,16 +318,18 @@ def api_get_company(coid):
 
 @app.route('/api/companies/<int:coid>', methods=['PUT'])
 def api_update_company(coid):
-    if not query('SELECT id FROM companies WHERE id=?', (coid,), one=True):
+    row = query('SELECT * FROM companies WHERE id=?', (coid,), one=True)
+    if not row:
         return jsonify({'error': 'Not found'}), 404
     data = request.get_json(force=True) or {}
     name = data.get('name', '').strip()
     if not name:
         return jsonify({'error': 'name is required'}), 400
+    logo = data['logo'] if 'logo' in data else row['logo']
     execute(
-        'UPDATE companies SET name=?,industry=?,website=?,address=?,notes=?,updated_at=? WHERE id=?',
+        'UPDATE companies SET name=?,industry=?,website=?,address=?,notes=?,logo=?,updated_at=? WHERE id=?',
         (name, data.get('industry',''), data.get('website',''),
-         data.get('address',''), data.get('notes',''), now_iso(), coid)
+         data.get('address',''), data.get('notes',''), logo, now_iso(), coid)
     )
     return jsonify(as_dict(query('SELECT * FROM companies WHERE id=?', (coid,), one=True)))
 
@@ -547,7 +552,7 @@ def api_dashboard():
         'LIMIT 20'
     )
     companies = query(
-        'SELECT co.id, co.name, '
+        'SELECT co.id, co.name, co.logo, '
         '(SELECT COUNT(*) FROM contacts WHERE company_id=co.id) AS contact_count, '
         '(SELECT COUNT(*) FROM meetings  WHERE company_id=co.id) AS meeting_count '
         'FROM companies co ORDER BY co.name COLLATE NOCASE ASC'

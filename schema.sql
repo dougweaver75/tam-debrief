@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS companies (
     website    TEXT    DEFAULT '',
     address    TEXT    DEFAULT '',
     notes      TEXT    DEFAULT '',
+    logo       TEXT    DEFAULT '',
     created_at TEXT    NOT NULL,
     updated_at TEXT    NOT NULL
 );

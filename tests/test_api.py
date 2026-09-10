@@ -136,6 +136,27 @@ def test_dashboard_company_counts(client):
     assert row['name'] == 'Acme Corp'
     assert row['contact_count'] == 1
     assert row['meeting_count'] == 1
+    assert 'logo' in row
+
+def test_company_logo_defaults_empty(client):
+    co = client.post('/api/companies', json={'name': 'NoLogo Co'}).get_json()
+    assert client.get(f"/api/companies/{co['id']}").get_json()['logo'] == ''
+
+def test_company_logo_roundtrip(client):
+    uri = 'data:image/png;base64,iVBORw0KGgo='
+    co = client.post('/api/companies', json={'name': 'Logo Co', 'logo': uri}).get_json()
+    assert co['logo'] == uri
+    assert client.get(f"/api/companies/{co['id']}").get_json()['logo'] == uri
+    client.put(f"/api/companies/{co['id']}", json={'name': 'Logo Co', 'logo': ''})
+    assert client.get(f"/api/companies/{co['id']}").get_json()['logo'] == ''
+
+def test_company_logo_preserved_when_key_absent(client):
+    uri = 'data:image/png;base64,iVBORw0KGgo='
+    co = client.post('/api/companies', json={'name': 'Keep Co', 'logo': uri}).get_json()
+    client.put(f"/api/companies/{co['id']}", json={'name': 'Keep Co Renamed'})
+    got = client.get(f"/api/companies/{co['id']}").get_json()
+    assert got['name'] == 'Keep Co Renamed'
+    assert got['logo'] == uri
 
 def test_meetings_table_exists(client):
     r = client.get('/api/meetings')

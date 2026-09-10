@@ -345,6 +345,16 @@ tr:hover td { background: #f8fafc; }
 
 .table-actions { display: flex; gap: 6px; white-space: nowrap; }
 
+.group-header td,
+.group-header:hover td {
+  background: var(--bg);
+  font-weight: 700;
+  font-size: var(--fs-sm);
+  color: var(--text);
+  padding: 6px 12px;
+}
+.group-count { color: var(--text-muted); font-weight: 400; }
+
 /* ── Badges ─────────────────────────────────────────────────────────────── */
 .badge {
   display: inline-block;
@@ -610,3 +620,17 @@ textarea { resize: vertical; min-height: 72px; }
 .md-content pre  { background: var(--bg-secondary, #f1f5f9); padding: 10px 12px; border-radius: 4px; overflow-x: auto; margin: 0.5em 0; }
 .md-content pre code { background: none; padding: 0; }
 .md-content blockquote { border-left: 3px solid var(--border, #e2e8f0); margin: 0.5em 0; padding-left: 0.75em; color: var(--text-muted, #64748b); }
+
+/* ── Dashboard company chips ────────────────────────────────────────────── */
+#dashCompanies { display: flex; flex-wrap: wrap; gap: 8px; }
+.company-chip {
+  display: inline-block;
+  padding: 5px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+  text-decoration: none;
+  transition: background .12s, color .12s;
+}
+.company-chip:hover { background: var(--bg); color: var(--text); }

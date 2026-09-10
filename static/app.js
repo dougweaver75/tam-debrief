@@ -56,6 +56,25 @@ function confirmDelete(message, onConfirm) {
   openModal('confirmModal');
 }
 
+// Buckets rows by company name. Named groups A–Z (case-insensitive),
+// then a trailing "No Company" group if any rows lack a company.
+// Row order within each group is preserved from the input array.
+function groupByCompany(rows, keyFn) {
+  const named = new Map();   // lowercase name -> { name, rows }
+  const none = [];
+  for (const row of rows) {
+    const name = keyFn(row);
+    if (!name) { none.push(row); continue; }
+    const key = name.toLowerCase();
+    if (!named.has(key)) named.set(key, { name, rows: [] });
+    named.get(key).rows.push(row);
+  }
+  const groups = [...named.values()].sort((a, b) =>
+    a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
+  if (none.length) groups.push({ name: 'No Company', rows: none });
+  return groups;
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('.modal').forEach(m => {
     const btn = document.createElement('button');
@@ -157,7 +176,12 @@ function renderContacts(contacts) {
     tbody.innerHTML = `<tr><td colspan="6" class="empty-state">No contacts yet. Add one to get started.</td></tr>`;
     return;
   }
-  tbody.innerHTML = contacts.map(c => `
+  const groups = groupByCompany(contacts, c => c.company_name || c.company);
+  tbody.innerHTML = groups.map(g => `
+    <tr class="group-header">
+      <td colspan="6">${esc(g.name)} <span class="group-count">(${g.rows.length})</span></td>
+    </tr>
+    ${g.rows.map(c => `
     <tr>
       <td><a href="/contacts/${c.id}" class="table-link">${esc(c.last_name)}, ${esc(c.first_name)}</a></td>
       <td>${esc(c.company_name || c.company) || '—'}</td>
@@ -168,7 +192,7 @@ function renderContacts(contacts) {
         <button class="btn btn-secondary btn-sm" onclick="openEditContact(${c.id})">Edit</button>
         <button class="btn btn-danger btn-sm" onclick="deleteContact(${c.id})">Delete</button>
       </td>
-    </tr>
+    </tr>`).join('')}
   `).join('');
 }
 
@@ -527,7 +551,12 @@ function renderMeetings(meetings) {
     tbody.innerHTML = `<tr><td colspan="4" class="empty-state">No meetings yet.</td></tr>`;
     return;
   }
-  tbody.innerHTML = meetings.map(m => `
+  const groups = groupByCompany(meetings, m => m.company_name);
+  tbody.innerHTML = groups.map(g => `
+    <tr class="group-header">
+      <td colspan="4">${esc(g.name)} <span class="group-count">(${g.rows.length})</span></td>
+    </tr>
+    ${g.rows.map(m => `
     <tr>
       <td><a href="/meetings/${m.id}" class="table-link">${esc(m.title)}</a></td>
       <td>${fmtDate(m.meeting_date)}</td>
@@ -536,7 +565,7 @@ function renderMeetings(meetings) {
         <a href="/meetings/${m.id}" class="btn btn-secondary btn-sm">Edit</a>
         <button class="btn btn-danger btn-sm" onclick="deleteMeeting(${m.id})">Delete</button>
       </td>
-    </tr>
+    </tr>`).join('')}
   `).join('');
 }
 
@@ -1244,17 +1273,31 @@ function initDashboard() {
 
 async function loadDashboard() {
   try {
-    const data = await API.get('/api/dashboard');
-    renderDashboard(data);
+    const [data, companies] = await Promise.all([
+      API.get('/api/dashboard'),
+      API.get('/api/companies'),
+    ]);
+    renderDashboard(data, companies);
   } catch (e) {
     document.getElementById('dashRoot').innerHTML = '<p class="empty-state">Error loading dashboard.</p>';
+    const c = document.getElementById('dashCompanies');
+    if (c) c.innerHTML = '<p class="empty-state">Error loading companies.</p>';
   }
 }
 
-function renderDashboard(data) {
+function renderDashboard(data, companies) {
   document.getElementById('statContacts').textContent    = data.total_contacts;
   document.getElementById('statMeetings').textContent    = data.total_meetings;
   document.getElementById('statActionItems').textContent = data.open_action_items;
+
+  const coEl = document.getElementById('dashCompanies');
+  if (coEl) {
+    coEl.innerHTML = companies.length
+      ? companies.map(c =>
+          `<a href="/companies/${c.id}" class="company-chip">${esc(c.name)}</a>`
+        ).join('')
+      : '<p class="empty-state">No companies yet.</p>';
+  }
 
   const aiEl = document.getElementById('dashActionItems');
   if (aiEl) {

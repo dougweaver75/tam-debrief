@@ -75,6 +75,44 @@ function groupByCompany(rows, keyFn) {
   return groups;
 }
 
+// Reads an image File to a data-URI string. Rasters are drawn onto a canvas
+// scaled so the longest side is <= maxPx (never upscaled); SVGs pass through.
+// Throws Error('too-large') if the encoded string exceeds 256 KB.
+function readImageAsDataUri(file, maxPx = 256) {
+  const MAX = 262144;
+  return new Promise((resolve, reject) => {
+    if (file.type === 'image/svg+xml') {
+      const fr = new FileReader();
+      fr.onload = () => {
+        if (fr.result.length > MAX) reject(new Error('too-large'));
+        else resolve(fr.result);
+      };
+      fr.onerror = () => reject(new Error('read-failed'));
+      fr.readAsDataURL(file);
+      return;
+    }
+    const fr = new FileReader();
+    fr.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const scale = Math.min(1, maxPx / Math.max(img.width, img.height));
+        const w = Math.round(img.width * scale);
+        const h = Math.round(img.height * scale);
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        const uri = canvas.toDataURL('image/png');
+        if (uri.length > MAX) reject(new Error('too-large'));
+        else resolve(uri);
+      };
+      img.onerror = () => reject(new Error('decode-failed'));
+      img.src = fr.result;
+    };
+    fr.onerror = () => reject(new Error('read-failed'));
+    fr.readAsDataURL(file);
+  });
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('.modal').forEach(m => {
     const btn = document.createElement('button');
@@ -1018,6 +1056,7 @@ function deleteActionItem(id) {
 let _companySearchTimer = null;
 
 function initCompanies() {
+  wireCompanyLogoInputs();
   loadCompanies();
 }
 
@@ -1061,6 +1100,7 @@ function openAddCompany() {
   document.getElementById('companyModalTitle').textContent = 'Add Company';
   document.getElementById('companyId').value = '';
   document.getElementById('companyForm').reset();
+  setCoLogoPreview('');
   openModal('companyModal');
 }
 
@@ -1074,6 +1114,7 @@ async function openEditCompany(id) {
     document.getElementById('coWebsite').value  = co.website  || '';
     document.getElementById('coAddress').value  = co.address  || '';
     document.getElementById('coNotes').value    = co.notes    || '';
+    setCoLogoPreview(co.logo || '');
     openModal('companyModal');
   } catch (e) { showToast('Failed to load company.'); }
 }
@@ -1087,6 +1128,7 @@ async function submitCompany(e) {
     website:  document.getElementById('coWebsite').value.trim(),
     address:  document.getElementById('coAddress').value.trim(),
     notes:    document.getElementById('coNotes').value.trim(),
+    logo:     _coLogo || '',
   };
   try {
     if (id) {
@@ -1114,8 +1156,43 @@ function deleteCompany(id) {
 // ── Company Detail ─────────────────────────────────────────────────────────
 
 let _currentCompany = null;
+let _coLogo = '';
+
+function setCoLogoPreview(uri) {
+  _coLogo = uri || '';
+  const img = document.getElementById('coLogoPreview');
+  const ph  = document.getElementById('coLogoPlaceholder');
+  if (!img || !ph) return;
+  if (_coLogo) { img.src = _coLogo; img.hidden = false; ph.hidden = true; }
+  else { img.removeAttribute('src'); img.hidden = true; ph.hidden = false; }
+}
+
+function wireCompanyLogoInputs() {
+  const input = document.getElementById('coLogo');
+  const remove = document.getElementById('coLogoRemove');
+  if (input && !input._wired) {
+    input._wired = true;
+    input.addEventListener('change', async () => {
+      const file = input.files && input.files[0];
+      if (!file) return;
+      try {
+        setCoLogoPreview(await readImageAsDataUri(file));
+      } catch (err) {
+        showToast(err.message === 'too-large'
+          ? 'Logo too large — try a smaller image.'
+          : 'Could not read that image.');
+      }
+      input.value = '';
+    });
+  }
+  if (remove && !remove._wired) {
+    remove._wired = true;
+    remove.addEventListener('click', () => setCoLogoPreview(''));
+  }
+}
 
 function initCompanyDetail(companyId) {
+  wireCompanyLogoInputs();
   loadCompanyDetail(companyId);
 }
 
@@ -1139,13 +1216,19 @@ async function loadCompanyDetail(companyId) {
 }
 
 function renderCompanyDetail(co) {
+  const logoHtml = co.logo
+    ? `<img src="${esc(co.logo)}" class="company-logo" alt="">`
+    : `<div class="company-logo company-logo-mono">${esc((co.name[0] || '?').toUpperCase())}</div>`;
   document.getElementById('companyDetailRoot').innerHTML = `
     <a href="/companies" class="back-link">${icon('arrow_back')} All Companies</a>
     <div class="card">
       <div class="contact-header">
-        <div>
-          <div class="contact-name">${esc(co.name)}</div>
-          <div class="contact-meta">${esc(co.industry) || ''}</div>
+        <div style="display:flex;gap:14px;align-items:flex-start">
+          ${logoHtml}
+          <div>
+            <div class="contact-name">${esc(co.name)}</div>
+            <div class="contact-meta">${esc(co.industry) || ''}</div>
+          </div>
         </div>
         <div style="display:flex;gap:8px">
           <button class="btn btn-secondary btn-sm" onclick="openEditCompanyDetail()">Edit</button>
@@ -1234,6 +1317,7 @@ function openEditCompanyDetail() {
   document.getElementById('coWebsite').value  = co.website  || '';
   document.getElementById('coAddress').value  = co.address  || '';
   document.getElementById('coNotes').value    = co.notes    || '';
+  setCoLogoPreview(co.logo || '');
   openModal('companyModal');
 }
 
@@ -1246,6 +1330,7 @@ async function submitCompanyDetail(e) {
     website:  document.getElementById('coWebsite').value.trim(),
     address:  document.getElementById('coAddress').value.trim(),
     notes:    document.getElementById('coNotes').value.trim(),
+    logo:     _coLogo || '',
   };
   try {
     const updated = await API.put(`/api/companies/${id}`, data);
@@ -1291,15 +1376,22 @@ function renderDashboard(data) {
   if (coEl) {
     const companies = data.companies || [];
     coEl.innerHTML = companies.length
-      ? companies.map(c => `
+      ? companies.map(c => {
+          const logo = c.logo
+            ? `<img src="${esc(c.logo)}" alt="">`
+            : `<span class="company-card-mono">${esc((c.name[0] || '?').toUpperCase())}</span>`;
+          return `
         <a href="/companies/${c.id}" class="company-card">
-          <div class="company-card-name">${esc(c.name)}</div>
-          <div class="company-card-stats">
-            <span>${icon('people', '13px')} ${c.contact_count}</span>
-            <span>${icon('calendar_today', '13px')} ${c.meeting_count}</span>
+          <div class="company-card-logo">${logo}</div>
+          <div class="company-card-body">
+            <div class="company-card-name">${esc(c.name)}</div>
+            <div class="company-card-stats">
+              <span>${icon('people', '13px')} ${c.contact_count}</span>
+              <span>${icon('calendar_today', '13px')} ${c.meeting_count}</span>
+            </div>
           </div>
-        </a>`
-        ).join('')
+        </a>`;
+        }).join('')
       : '<p class="empty-state">No companies yet.</p>';
   }
 

@@ -130,6 +130,22 @@ function fmtDate(s) {
   return d.toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' });
 }
 
+function timeAgo(iso) {
+  if (!iso) return '';
+  const then = new Date(iso.includes('T') ? iso : iso + 'T00:00:00');
+  const secs = Math.floor((Date.now() - then.getTime()) / 1000);
+  if (secs < 60) return 'just now';
+  const mins = Math.floor(secs / 60);
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days}d ago`;
+  const months = Math.floor(days / 30);
+  if (months < 12) return `${months}mo ago`;
+  return `${Math.floor(months / 12)}y ago`;
+}
+
 function badgeHtml(cls, text) {
   return `<span class="badge badge-${cls}">${text}</span>`;
 }
@@ -1198,17 +1214,19 @@ function initCompanyDetail(companyId) {
 
 async function loadCompanyDetail(companyId) {
   try {
-    const [company, contacts, meetings, actionItems] = await Promise.all([
+    const [company, contacts, meetings, actionItems, notes] = await Promise.all([
       API.get(`/api/companies/${companyId}`),
       API.get(`/api/companies/${companyId}/contacts`),
       API.get(`/api/companies/${companyId}/meetings`),
-      API.get(`/api/companies/${companyId}/action-items`)
+      API.get(`/api/companies/${companyId}/action-items`),
+      API.get(`/api/companies/${companyId}/notes`)
     ]);
     _currentCompany = company;
     renderCompanyDetail(company);
     renderCompanyContacts(contacts);
     renderCompanyMeetings(meetings);
     renderCompanyActionItems(actionItems);
+    renderCompanyNotes(notes);
   } catch (e) {
     document.getElementById('companyDetailRoot').innerHTML =
       '<p class="empty-state">Company not found.</p>';
@@ -1346,6 +1364,74 @@ function deleteCompanyDetail(id) {
     try {
       await API.del(`/api/companies/${id}`);
       window.location.href = '/companies';
+    } catch (e) { showToast('Delete failed.'); }
+  });
+}
+
+// ── Company Notes ─────────────────────────────────────────────────────────
+
+function renderCompanyNotes(notes) {
+  const el = document.getElementById('companyNotesList');
+  if (!el) return;
+  if (!notes.length) { el.innerHTML = '<p class="empty-state">No notes yet.</p>'; return; }
+  el.innerHTML = notes.map(n => `
+    <div class="interaction-item">
+      <div style="flex:1">
+        <div class="interaction-date" title="${fmtDate(n.created_at)}">${timeAgo(n.created_at)}</div>
+        <div class="interaction-summary" style="white-space:pre-wrap">${esc(n.body)}</div>
+      </div>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-secondary btn-sm" onclick="openEditCompanyNote(${n.id})">Edit</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteCompanyNote(${n.id})" title="Delete">${icon('close')}</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function openAddCompanyNote() {
+  document.getElementById('companyNoteModalTitle').textContent = 'Add Note';
+  document.getElementById('cnId').value = '';
+  document.getElementById('companyNoteForm').reset();
+  openModal('companyNoteModal');
+}
+
+async function openEditCompanyNote(id) {
+  try {
+    const notes = await API.get(`/api/companies/${_currentCompany.id}/notes`);
+    const n = notes.find(x => x.id === id);
+    if (!n) return;
+    document.getElementById('companyNoteModalTitle').textContent = 'Edit Note';
+    document.getElementById('cnId').value = n.id;
+    document.getElementById('cnBody').value = n.body;
+    openModal('companyNoteModal');
+  } catch (e) { showToast('Failed to load note.'); }
+}
+
+async function submitCompanyNote(e) {
+  e.preventDefault();
+  const id   = document.getElementById('cnId').value;
+  const body = document.getElementById('cnBody').value.trim();
+  try {
+    if (id) {
+      await API.put(`/api/notes/${id}`, { body });
+      showToast('Note updated.');
+    } else {
+      await API.post(`/api/companies/${_currentCompany.id}/notes`, { body });
+      showToast('Note added.');
+    }
+    closeModal();
+    const notes = await API.get(`/api/companies/${_currentCompany.id}/notes`);
+    renderCompanyNotes(notes);
+  } catch (e) { showToast('Save failed.'); }
+}
+
+function deleteCompanyNote(id) {
+  confirmDelete('Delete this note?', async () => {
+    try {
+      await API.del(`/api/notes/${id}`);
+      showToast('Note deleted.');
+      const notes = await API.get(`/api/companies/${_currentCompany.id}/notes`);
+      renderCompanyNotes(notes);
     } catch (e) { showToast('Delete failed.'); }
   });
 }

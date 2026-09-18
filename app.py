@@ -279,6 +279,25 @@ def api_delete_interaction(iid):
     return jsonify({'ok': True})
 
 
+@app.route('/api/interactions/<int:iid>', methods=['PUT'])
+def api_update_interaction(iid):
+    if not query('SELECT id FROM interactions WHERE id=?', (iid,), one=True):
+        return jsonify({'error': 'Not found'}), 404
+    data    = request.get_json(force=True) or {}
+    itype   = data.get('type', '')
+    summary = data.get('summary', '').strip()
+    idate   = data.get('interaction_date', '')
+    if not summary or not idate:
+        return jsonify({'error': 'summary and interaction_date are required'}), 400
+    if itype not in ('call', 'email', 'meeting', 'note'):
+        return jsonify({'error': 'type must be call, email, meeting, or note'}), 400
+    execute(
+        'UPDATE interactions SET type=?,summary=?,interaction_date=?,updated_at=? WHERE id=?',
+        (itype, summary, idate, now_iso(), iid)
+    )
+    return jsonify(as_dict(query('SELECT * FROM interactions WHERE id=?', (iid,), one=True)))
+
+
 # ── API: companies ───────────────────────────────────────────────────────────
 
 @app.route('/api/companies', methods=['GET'])

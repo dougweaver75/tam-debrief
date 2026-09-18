@@ -94,6 +94,39 @@ def test_delete_interaction(client):
     r2 = client.get(f'/api/contacts/{cid}/interactions')
     assert r2.get_json() == []
 
+def test_update_interaction(client):
+    cid = _make_contact(client)
+    r = client.post('/api/interactions', json={
+        'contact_id': cid, 'type': 'call', 'summary': 'Hi', 'interaction_date': '2026-05-28'
+    })
+    iid = r.get_json()['id']
+    r2 = client.put(f'/api/interactions/{iid}', json={
+        'type': 'email', 'summary': 'Updated', 'interaction_date': '2026-05-29'
+    })
+    assert r2.status_code == 200
+    d = r2.get_json()
+    assert d['type'] == 'email'
+    assert d['summary'] == 'Updated'
+    assert d['interaction_date'] == '2026-05-29'
+    assert d['updated_at'] is not None
+
+def test_update_interaction_invalid_type(client):
+    cid = _make_contact(client)
+    r = client.post('/api/interactions', json={
+        'contact_id': cid, 'type': 'call', 'summary': 'Hi', 'interaction_date': '2026-05-28'
+    })
+    iid = r.get_json()['id']
+    r2 = client.put(f'/api/interactions/{iid}', json={
+        'type': 'bogus', 'summary': 'x', 'interaction_date': '2026-05-28'
+    })
+    assert r2.status_code == 400
+
+def test_update_interaction_not_found(client):
+    r = client.put('/api/interactions/999', json={
+        'type': 'call', 'summary': 'x', 'interaction_date': '2026-05-28'
+    })
+    assert r.status_code == 404
+
 
 def test_delete_cascades(client):
     cid = _make_contact(client)

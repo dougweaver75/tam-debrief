@@ -74,6 +74,9 @@ def migrate_db():
     cols_co = {r[1] for r in db.execute("PRAGMA table_info(companies)")}
     if 'logo' not in cols_co:
         db.execute("ALTER TABLE companies ADD COLUMN logo TEXT DEFAULT ''")
+    cols_int = {r[1] for r in db.execute("PRAGMA table_info(interactions)")}
+    if 'updated_at' not in cols_int:
+        db.execute("ALTER TABLE interactions ADD COLUMN updated_at TEXT")
     db.commit()
     db.close()
 

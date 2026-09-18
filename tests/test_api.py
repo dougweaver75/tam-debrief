@@ -402,3 +402,13 @@ def test_update_action_item_due_date_text(client):
     })
     assert r2.status_code == 200
     assert r2.get_json()['due_date_text'] == 'end of Q3'
+
+def test_new_tables_and_columns_exist(client):
+    import sqlite3
+    conn = sqlite3.connect(ccrm_app.DB_PATH)
+    tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    assert 'company_notes' in tables
+    assert 'timeline_events' in tables
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(interactions)")}
+    assert 'updated_at' in cols
+    conn.close()

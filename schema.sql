@@ -17,7 +17,8 @@ CREATE TABLE IF NOT EXISTS interactions (
     type             TEXT    NOT NULL CHECK(type IN ('call','email','meeting','note')),
     summary          TEXT    NOT NULL,
     interaction_date TEXT    NOT NULL,
-    created_at       TEXT    NOT NULL
+    created_at       TEXT    NOT NULL,
+    updated_at       TEXT
 );
 
 CREATE TABLE IF NOT EXISTS deals (
@@ -71,4 +72,24 @@ CREATE TABLE IF NOT EXISTS action_items (
     completed     INTEGER NOT NULL DEFAULT 0,
     created_at   TEXT    NOT NULL,
     updated_at   TEXT    NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS company_notes (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    company_id  INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+    body        TEXT    NOT NULL,
+    created_at  TEXT    NOT NULL,
+    updated_at  TEXT    NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS timeline_events (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    company_id  INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+    category    TEXT    NOT NULL DEFAULT 'other'
+                CHECK(category IN ('milestone','renewal','go-live','risk','other')),
+    title       TEXT    NOT NULL,
+    description TEXT    DEFAULT '',
+    event_date  TEXT    NOT NULL,
+    created_at  TEXT    NOT NULL,
+    updated_at  TEXT    NOT NULL
 );

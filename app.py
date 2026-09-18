@@ -486,6 +486,52 @@ def api_delete_timeline_event(eid):
     return jsonify({'ok': True})
 
 
+# ── API: company timeline (merged) ───────────────────────────────────────────
+
+@app.route('/api/companies/<int:coid>/timeline', methods=['GET'])
+def api_company_timeline(coid):
+    if not query('SELECT id FROM companies WHERE id=?', (coid,), one=True):
+        return jsonify({'error': 'Not found'}), 404
+
+    meetings = query('SELECT id, title, meeting_date FROM meetings WHERE company_id=?', (coid,))
+    action_items = query(
+        'SELECT ai.id, ai.description, ai.due_date, m.id AS meeting_id '
+        'FROM action_items ai JOIN meetings m ON m.id=ai.meeting_id '
+        'WHERE m.company_id=? AND ai.due_date IS NOT NULL',
+        (coid,)
+    )
+    notes  = query('SELECT id, body, created_at FROM company_notes WHERE company_id=?', (coid,))
+    events = query(
+        'SELECT id, category, title, description, event_date FROM timeline_events WHERE company_id=?',
+        (coid,)
+    )
+
+    items = []
+    for m in meetings:
+        items.append({
+            'source': 'meeting', 'id': m['id'], 'date': m['meeting_date'], 'category': None,
+            'title': m['title'], 'detail': '', 'link': f"/meetings/{m['id']}"
+        })
+    for a in action_items:
+        items.append({
+            'source': 'action_item', 'id': a['id'], 'date': a['due_date'], 'category': None,
+            'title': a['description'], 'detail': '', 'link': f"/meetings/{a['meeting_id']}"
+        })
+    for n in notes:
+        items.append({
+            'source': 'note', 'id': n['id'], 'date': n['created_at'], 'category': None,
+            'title': 'Note', 'detail': n['body'], 'link': None
+        })
+    for e in events:
+        items.append({
+            'source': 'event', 'id': e['id'], 'date': e['event_date'], 'category': e['category'],
+            'title': e['title'], 'detail': e['description'] or '', 'link': None
+        })
+
+    items.sort(key=lambda x: x['date'], reverse=True)
+    return jsonify(items)
+
+
 # ── API: meetings ────────────────────────────────────────────────────────────
 
 @app.route('/api/meetings', methods=['GET'])

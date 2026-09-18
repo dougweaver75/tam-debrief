@@ -510,3 +510,38 @@ def test_timeline_event_requires_title_and_date(client):
 def test_timeline_event_company_not_found(client):
     r = client.post('/api/companies/999/timeline_events', json={'title': 'X', 'event_date': '2026-06-01'})
     assert r.status_code == 404
+
+def test_company_timeline_merges_sources(client):
+    coid = _make_company(client)
+    r_m = client.post('/api/meetings', json={'title': 'Kickoff', 'meeting_date': '2026-06-01', 'company_id': coid})
+    mid = r_m.get_json()['id']
+    client.post(f'/api/meetings/{mid}/action_items', json={'description': 'Send SOW', 'due_date': '2026-06-02'})
+    client.post(f'/api/companies/{coid}/notes', json={'body': 'Called to check in'})
+    client.post(f'/api/companies/{coid}/timeline_events', json={
+        'category': 'go-live', 'title': 'Go live', 'event_date': '2026-06-03'
+    })
+
+    r = client.get(f'/api/companies/{coid}/timeline')
+    assert r.status_code == 200
+    items = r.get_json()
+    assert {i['source'] for i in items} == {'meeting', 'action_item', 'note', 'event'}
+    dates = [i['date'] for i in items]
+    assert dates == sorted(dates, reverse=True)
+    event_item = next(i for i in items if i['source'] == 'event')
+    assert event_item['category'] == 'go-live'
+    meeting_item = next(i for i in items if i['source'] == 'meeting')
+    assert meeting_item['link'] == f'/meetings/{mid}'
+    note_item = next(i for i in items if i['source'] == 'note')
+    assert note_item['link'] is None
+
+def test_company_timeline_excludes_action_items_without_due_date(client):
+    coid = _make_company(client)
+    r_m = client.post('/api/meetings', json={'title': 'Kickoff', 'meeting_date': '2026-06-01', 'company_id': coid})
+    mid = r_m.get_json()['id']
+    client.post(f'/api/meetings/{mid}/action_items', json={'description': 'No due date'})
+    items = client.get(f'/api/companies/{coid}/timeline').get_json()
+    assert not any(i['source'] == 'action_item' for i in items)
+
+def test_company_timeline_not_found(client):
+    r = client.get('/api/companies/999/timeline')
+    assert r.status_code == 404

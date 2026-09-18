@@ -202,6 +202,8 @@ async function populateAttendeeDropdown(selectId, selectedId, meetingId) {
 }
 
 const TYPE_LABELS  = { call:'Call', email:'Email', meeting:'Meeting', note:'Note' };
+const TIMELINE_CATEGORY_LABELS = { milestone: 'Milestone', renewal: 'Renewal', 'go-live': 'Go Live', risk: 'Risk', other: 'Other' };
+const TIMELINE_SOURCE_LABELS   = { meeting: 'Meeting', action_item: 'Action Item', note: 'Note' };
 
 // ── Contacts List ──────────────────────────────────────────────────────────
 
@@ -1214,12 +1216,13 @@ function initCompanyDetail(companyId) {
 
 async function loadCompanyDetail(companyId) {
   try {
-    const [company, contacts, meetings, actionItems, notes] = await Promise.all([
+    const [company, contacts, meetings, actionItems, notes, timeline] = await Promise.all([
       API.get(`/api/companies/${companyId}`),
       API.get(`/api/companies/${companyId}/contacts`),
       API.get(`/api/companies/${companyId}/meetings`),
       API.get(`/api/companies/${companyId}/action-items`),
-      API.get(`/api/companies/${companyId}/notes`)
+      API.get(`/api/companies/${companyId}/notes`),
+      API.get(`/api/companies/${companyId}/timeline`)
     ]);
     _currentCompany = company;
     renderCompanyDetail(company);
@@ -1227,6 +1230,7 @@ async function loadCompanyDetail(companyId) {
     renderCompanyMeetings(meetings);
     renderCompanyActionItems(actionItems);
     renderCompanyNotes(notes);
+    renderCompanyTimeline(timeline);
   } catch (e) {
     document.getElementById('companyDetailRoot').innerHTML =
       '<p class="empty-state">Company not found.</p>';
@@ -1432,6 +1436,98 @@ function deleteCompanyNote(id) {
       showToast('Note deleted.');
       const notes = await API.get(`/api/companies/${_currentCompany.id}/notes`);
       renderCompanyNotes(notes);
+    } catch (e) { showToast('Delete failed.'); }
+  });
+}
+
+// ── Company Timeline ─────────────────────────────────────────────────────
+
+function renderCompanyTimeline(items) {
+  const el = document.getElementById('companyTimelineList');
+  if (!el) return;
+  if (!items.length) { el.innerHTML = '<p class="empty-state">Nothing on the timeline yet.</p>'; return; }
+  el.innerHTML = items.map(i => {
+    const badge = i.category
+      ? badgeHtml(i.category, TIMELINE_CATEGORY_LABELS[i.category] || i.category)
+      : badgeHtml(i.source, TIMELINE_SOURCE_LABELS[i.source] || i.source);
+    const titleHtml = i.link
+      ? `<a href="${i.link}" class="table-link">${esc(i.title)}</a>`
+      : esc(i.title);
+    const actions = i.source === 'event'
+      ? `<div style="display:flex;gap:6px">
+           <button class="btn btn-secondary btn-sm" onclick="openEditTimelineEvent(${i.id})">Edit</button>
+           <button class="btn btn-danger btn-sm" onclick="deleteTimelineEvent(${i.id})" title="Delete">${icon('close')}</button>
+         </div>`
+      : '';
+    return `
+    <div class="interaction-item">
+      <div style="flex:1">
+        <div style="display:flex;align-items:center;gap:8px">
+          ${badge}
+          <span class="interaction-date">${fmtDate(i.date)}</span>
+        </div>
+        <div class="interaction-summary">${titleHtml}</div>
+        ${i.detail ? `<div class="interaction-summary" style="color:var(--text-muted)">${esc(i.detail)}</div>` : ''}
+      </div>
+      ${actions}
+    </div>`;
+  }).join('');
+}
+
+function openAddTimelineEvent() {
+  document.getElementById('timelineEventModalTitle').textContent = 'Add Event';
+  document.getElementById('teId').value = '';
+  document.getElementById('timelineEventForm').reset();
+  document.getElementById('teCategory').value = 'milestone';
+  document.getElementById('teDate').value = new Date().toISOString().slice(0,10);
+  openModal('timelineEventModal');
+}
+
+async function openEditTimelineEvent(id) {
+  try {
+    const items = await API.get(`/api/companies/${_currentCompany.id}/timeline`);
+    const ev = items.find(x => x.source === 'event' && x.id === id);
+    if (!ev) return;
+    document.getElementById('timelineEventModalTitle').textContent = 'Edit Event';
+    document.getElementById('teId').value = ev.id;
+    document.getElementById('teCategory').value = ev.category || 'other';
+    document.getElementById('teDate').value = ev.date;
+    document.getElementById('teTitle').value = ev.title;
+    document.getElementById('teDescription').value = ev.detail || '';
+    openModal('timelineEventModal');
+  } catch (e) { showToast('Failed to load event.'); }
+}
+
+async function submitTimelineEvent(e) {
+  e.preventDefault();
+  const id   = document.getElementById('teId').value;
+  const data = {
+    category:    document.getElementById('teCategory').value,
+    title:       document.getElementById('teTitle').value.trim(),
+    description: document.getElementById('teDescription').value.trim(),
+    event_date:  document.getElementById('teDate').value,
+  };
+  try {
+    if (id) {
+      await API.put(`/api/timeline_events/${id}`, data);
+      showToast('Event updated.');
+    } else {
+      await API.post(`/api/companies/${_currentCompany.id}/timeline_events`, data);
+      showToast('Event added.');
+    }
+    closeModal();
+    const items = await API.get(`/api/companies/${_currentCompany.id}/timeline`);
+    renderCompanyTimeline(items);
+  } catch (e) { showToast('Save failed.'); }
+}
+
+function deleteTimelineEvent(id) {
+  confirmDelete('Delete this event?', async () => {
+    try {
+      await API.del(`/api/timeline_events/${id}`);
+      showToast('Event deleted.');
+      const items = await API.get(`/api/companies/${_currentCompany.id}/timeline`);
+      renderCompanyTimeline(items);
     } catch (e) { showToast('Delete failed.'); }
   });
 }

@@ -15,6 +15,16 @@
   </div>
 </div>
 
+<div id="companyTimelineSection" style="display:none">
+  <div class="card">
+    <div class="section-header">
+      <div class="card-title" style="margin:0">Timeline</div>
+      <button class="btn btn-primary btn-sm" onclick="openAddTimelineEvent()">+ Add Event</button>
+    </div>
+    <div id="companyTimelineList"></div>
+  </div>
+</div>
+
 <div id="companyContactsSection" style="display:none">
   <div class="card">
     <div class="card-title">Contacts</div>
@@ -76,11 +86,38 @@
     </div>
   </form>
 </div>
+<!-- Timeline Event Modal -->
+<div class="modal" id="timelineEventModal">
+  <div class="modal-title" id="timelineEventModalTitle">Add Event</div>
+  <form id="timelineEventForm" onsubmit="submitTimelineEvent(event)">
+    <input type="hidden" id="teId">
+    <div class="form-row-2">
+      <div class="form-row">
+        <label>Category</label>
+        <select id="teCategory">
+          <option value="milestone">Milestone</option>
+          <option value="renewal">Renewal</option>
+          <option value="go-live">Go Live</option>
+          <option value="risk">Risk</option>
+          <option value="other">Other</option>
+        </select>
+      </div>
+      <div class="form-row"><label>Date *</label><input type="date" id="teDate" required></div>
+    </div>
+    <div class="form-row"><label>Title *</label><input type="text" id="teTitle" required></div>
+    <div class="form-row"><label>Description</label><textarea id="teDescription"></textarea></div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button type="submit" class="btn btn-primary">Save</button>
+    </div>
+  </form>
+</div>
 {% endblock %}
 {% block scripts %}
 <script>
   initCompanyDetail({{ company_id }});
   document.getElementById('companyNotesSection').style.display = '';
+  document.getElementById('companyTimelineSection').style.display = '';
   document.getElementById('companyContactsSection').style.display = '';
   document.getElementById('companyMeetingsSection').style.display = '';
   document.getElementById('companyActionItemsSection').style.display = '';

@@ -1625,18 +1625,56 @@ function renderDashboard(data) {
   const el = document.getElementById('recentList');
   if (!data.recent_interactions.length) {
     el.innerHTML = '<p class="empty-state">No interactions yet.</p>';
-    return;
-  }
-  el.innerHTML = data.recent_interactions.map(i => `
-    <div class="interaction-item">
-      <div style="flex:1">
-        <div style="display:flex;align-items:center;gap:8px">
-          ${badgeHtml(i.type, TYPE_LABELS[i.type] || i.type)}
-          <a href="/contacts/${i.contact_id}" class="table-link">${esc(i.first_name)} ${esc(i.last_name)}</a>
-          <span class="interaction-date">${fmtDate(i.interaction_date)}</span>
+  } else {
+    el.innerHTML = data.recent_interactions.map(i => `
+      <div class="interaction-item">
+        <div style="flex:1">
+          <div style="display:flex;align-items:center;gap:8px">
+            ${badgeHtml(i.type, TYPE_LABELS[i.type] || i.type)}
+            <a href="/contacts/${i.contact_id}" class="table-link">${esc(i.first_name)} ${esc(i.last_name)}</a>
+            <span class="interaction-date">${fmtDate(i.interaction_date)}</span>
+          </div>
+          <div class="interaction-summary">${esc(i.summary)}</div>
         </div>
-        <div class="interaction-summary">${esc(i.summary)}</div>
       </div>
-    </div>
-  `).join('');
+    `).join('');
+  }
+
+  const raEl = document.getElementById('dashRecentActivity');
+  if (raEl) {
+    const items = data.recent_activity || [];
+    raEl.innerHTML = items.length
+      ? items.map(i => `
+        <div class="interaction-item">
+          <div style="flex:1">
+            <div style="display:flex;align-items:center;gap:8px">
+              ${i.category ? badgeHtml(i.category, TIMELINE_CATEGORY_LABELS[i.category] || i.category)
+                            : badgeHtml(i.source, TIMELINE_SOURCE_LABELS[i.source] || i.source)}
+              <a href="${i.link}" class="table-link">${esc(i.company_name)}</a>
+              <span class="interaction-date">${fmtDate(i.date)}</span>
+            </div>
+            <div class="interaction-summary">${esc(i.title)}</div>
+          </div>
+        </div>`).join('')
+      : '<p class="empty-state">No recent activity.</p>';
+  }
+
+  const upEl = document.getElementById('dashUpcoming');
+  if (upEl) {
+    const items = data.upcoming || [];
+    upEl.innerHTML = items.length
+      ? items.map(i => `
+        <div class="interaction-item">
+          <div style="flex:1">
+            <div style="display:flex;align-items:center;gap:8px">
+              ${i.category ? badgeHtml(i.category, TIMELINE_CATEGORY_LABELS[i.category] || i.category)
+                            : badgeHtml(i.source, TIMELINE_SOURCE_LABELS[i.source] || i.source)}
+              <a href="${i.link}" class="table-link">${esc(i.company_name)}</a>
+              <span class="interaction-date">${fmtDate(i.date)}</span>
+            </div>
+            <div class="interaction-summary">${esc(i.title)}</div>
+          </div>
+        </div>`).join('')
+      : '<p class="empty-state">Nothing upcoming.</p>';
+  }
 }

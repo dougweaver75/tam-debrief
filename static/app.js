@@ -132,7 +132,7 @@ function fmtDate(s) {
 
 function timeAgo(iso) {
   if (!iso) return '';
-  const then = new Date(iso.includes('T') ? iso : iso + 'T00:00:00');
+  const then = new Date(iso.includes('T') ? (/[Z+-]\d{2}:?\d{2}$|Z$/.test(iso) ? iso : iso + 'Z') : iso + 'T00:00:00');
   const secs = Math.floor((Date.now() - then.getTime()) / 1000);
   if (secs < 60) return 'just now';
   const mins = Math.floor(secs / 60);
@@ -1399,6 +1399,15 @@ function deleteCompanyDetail(id) {
 
 // ── Company Notes ─────────────────────────────────────────────────────────
 
+async function refreshCompanyFeeds() {
+  const [notes, timeline] = await Promise.all([
+    API.get(`/api/companies/${_currentCompany.id}/notes`),
+    API.get(`/api/companies/${_currentCompany.id}/timeline`)
+  ]);
+  renderCompanyNotes(notes);
+  renderCompanyTimeline(timeline);
+}
+
 function renderCompanyNotes(notes) {
   const el = document.getElementById('companyNotesList');
   if (!el) return;
@@ -1449,8 +1458,7 @@ async function submitCompanyNote(e) {
       showToast('Note added.');
     }
     closeModal();
-    const notes = await API.get(`/api/companies/${_currentCompany.id}/notes`);
-    renderCompanyNotes(notes);
+    await refreshCompanyFeeds();
   } catch (e) { showToast('Save failed.'); }
 }
 
@@ -1459,8 +1467,7 @@ function deleteCompanyNote(id) {
     try {
       await API.del(`/api/notes/${id}`);
       showToast('Note deleted.');
-      const notes = await API.get(`/api/companies/${_currentCompany.id}/notes`);
-      renderCompanyNotes(notes);
+      await refreshCompanyFeeds();
     } catch (e) { showToast('Delete failed.'); }
   });
 }
@@ -1541,8 +1548,7 @@ async function submitTimelineEvent(e) {
       showToast('Event added.');
     }
     closeModal();
-    const items = await API.get(`/api/companies/${_currentCompany.id}/timeline`);
-    renderCompanyTimeline(items);
+    await refreshCompanyFeeds();
   } catch (e) { showToast('Save failed.'); }
 }
 
@@ -1551,8 +1557,7 @@ function deleteTimelineEvent(id) {
     try {
       await API.del(`/api/timeline_events/${id}`);
       showToast('Event deleted.');
-      const items = await API.get(`/api/companies/${_currentCompany.id}/timeline`);
-      renderCompanyTimeline(items);
+      await refreshCompanyFeeds();
     } catch (e) { showToast('Delete failed.'); }
   });
 }

@@ -731,7 +731,7 @@ def api_dashboard():
 
     recent_meetings = query(
         'SELECT m.id, m.title, m.meeting_date AS date, co.id AS company_id, co.name AS company_name '
-        'FROM meetings m JOIN companies co ON co.id=m.company_id '
+        'FROM meetings m LEFT JOIN companies co ON co.id=m.company_id '
         'WHERE m.meeting_date <= ? ORDER BY m.meeting_date DESC LIMIT 15',
         (today,)
     )
@@ -751,8 +751,8 @@ def api_dashboard():
     for m in recent_meetings:
         recent_activity.append({
             'source': 'meeting', 'date': m['date'], 'company_id': m['company_id'],
-            'company_name': m['company_name'], 'title': m['title'], 'category': None,
-            'link': f"/companies/{m['company_id']}"
+            'company_name': m['company_name'] or '—', 'title': m['title'], 'category': None,
+            'link': f"/companies/{m['company_id']}" if m['company_id'] else f"/meetings/{m['id']}"
         })
     for n in recent_notes:
         recent_activity.append({
@@ -771,14 +771,15 @@ def api_dashboard():
 
     upcoming_meetings = query(
         'SELECT m.id, m.title, m.meeting_date AS date, co.id AS company_id, co.name AS company_name '
-        'FROM meetings m JOIN companies co ON co.id=m.company_id '
+        'FROM meetings m LEFT JOIN companies co ON co.id=m.company_id '
         'WHERE m.meeting_date >= ? ORDER BY m.meeting_date ASC LIMIT 20',
         (today,)
     )
     upcoming_ai = query(
-        'SELECT ai.id, ai.description, ai.due_date AS date, co.id AS company_id, co.name AS company_name '
+        'SELECT ai.id, ai.description, ai.due_date AS date, co.id AS company_id, co.name AS company_name, '
+        'm.id AS meeting_id '
         'FROM action_items ai JOIN meetings m ON m.id=ai.meeting_id '
-        'JOIN companies co ON co.id=m.company_id '
+        'LEFT JOIN companies co ON co.id=m.company_id '
         'WHERE ai.completed=0 AND ai.due_date >= ? ORDER BY ai.due_date ASC LIMIT 20',
         (today,)
     )
@@ -793,14 +794,14 @@ def api_dashboard():
     for m in upcoming_meetings:
         upcoming.append({
             'source': 'meeting', 'date': m['date'], 'company_id': m['company_id'],
-            'company_name': m['company_name'], 'title': m['title'], 'category': None,
-            'link': f"/companies/{m['company_id']}"
+            'company_name': m['company_name'] or '—', 'title': m['title'], 'category': None,
+            'link': f"/companies/{m['company_id']}" if m['company_id'] else f"/meetings/{m['id']}"
         })
     for a in upcoming_ai:
         upcoming.append({
             'source': 'action_item', 'date': a['date'], 'company_id': a['company_id'],
-            'company_name': a['company_name'], 'title': a['description'], 'category': None,
-            'link': f"/companies/{a['company_id']}"
+            'company_name': a['company_name'] or '—', 'title': a['description'], 'category': None,
+            'link': f"/companies/{a['company_id']}" if a['company_id'] else f"/meetings/{a['meeting_id']}"
         })
     for e in upcoming_events:
         upcoming.append({

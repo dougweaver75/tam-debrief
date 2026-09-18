@@ -628,3 +628,28 @@ def test_dashboard_recent_activity_capped_at_15(client):
         })
     d = client.get('/api/dashboard').get_json()
     assert len(d['recent_activity']) == 15
+
+def test_dashboard_includes_companyless_meetings(client):
+    today     = datetime.utcnow().date()
+    yesterday = (today - timedelta(days=1)).isoformat()
+    tomorrow  = (today + timedelta(days=1)).isoformat()
+
+    r_past = client.post('/api/meetings', json={
+        'title': 'Companyless Past Meeting', 'meeting_date': yesterday, 'company_id': None
+    })
+    past_mid = r_past.get_json()['id']
+
+    r_future = client.post('/api/meetings', json={
+        'title': 'Companyless Future Meeting', 'meeting_date': tomorrow, 'company_id': None
+    })
+    future_mid = r_future.get_json()['id']
+
+    d = client.get('/api/dashboard').get_json()
+
+    past_item = next(i for i in d['recent_activity'] if i['title'] == 'Companyless Past Meeting')
+    assert past_item['company_name'] == '—'
+    assert past_item['link'] == f'/meetings/{past_mid}'
+
+    future_item = next(i for i in d['upcoming'] if i['title'] == 'Companyless Future Meeting')
+    assert future_item['company_name'] == '—'
+    assert future_item['link'] == f'/meetings/{future_mid}'

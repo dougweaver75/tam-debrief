@@ -434,6 +434,58 @@ def api_delete_company_note(nid):
     return jsonify({'ok': True})
 
 
+# ── API: timeline events ─────────────────────────────────────────────────────
+
+TIMELINE_CATEGORIES = ('milestone', 'renewal', 'go-live', 'risk', 'other')
+
+@app.route('/api/companies/<int:coid>/timeline_events', methods=['POST'])
+def api_create_timeline_event(coid):
+    if not query('SELECT id FROM companies WHERE id=?', (coid,), one=True):
+        return jsonify({'error': 'Not found'}), 404
+    data     = request.get_json(force=True) or {}
+    title    = data.get('title', '').strip()
+    edate    = (data.get('event_date') or '').strip()
+    category = data.get('category') or 'other'
+    if not title or not edate:
+        return jsonify({'error': 'title and event_date are required'}), 400
+    if category not in TIMELINE_CATEGORIES:
+        return jsonify({'error': 'category must be one of ' + ', '.join(TIMELINE_CATEGORIES)}), 400
+    ts  = now_iso()
+    cur = execute(
+        'INSERT INTO timeline_events (company_id,category,title,description,event_date,created_at,updated_at) '
+        'VALUES (?,?,?,?,?,?,?)',
+        (coid, category, title, data.get('description', ''), edate, ts, ts)
+    )
+    return jsonify(as_dict(query('SELECT * FROM timeline_events WHERE id=?', (cur.lastrowid,), one=True))), 201
+
+
+@app.route('/api/timeline_events/<int:eid>', methods=['PUT'])
+def api_update_timeline_event(eid):
+    if not query('SELECT id FROM timeline_events WHERE id=?', (eid,), one=True):
+        return jsonify({'error': 'Not found'}), 404
+    data     = request.get_json(force=True) or {}
+    title    = data.get('title', '').strip()
+    edate    = (data.get('event_date') or '').strip()
+    category = data.get('category') or 'other'
+    if not title or not edate:
+        return jsonify({'error': 'title and event_date are required'}), 400
+    if category not in TIMELINE_CATEGORIES:
+        return jsonify({'error': 'category must be one of ' + ', '.join(TIMELINE_CATEGORIES)}), 400
+    execute(
+        'UPDATE timeline_events SET category=?,title=?,description=?,event_date=?,updated_at=? WHERE id=?',
+        (category, title, data.get('description', ''), edate, now_iso(), eid)
+    )
+    return jsonify(as_dict(query('SELECT * FROM timeline_events WHERE id=?', (eid,), one=True)))
+
+
+@app.route('/api/timeline_events/<int:eid>', methods=['DELETE'])
+def api_delete_timeline_event(eid):
+    cur = execute('DELETE FROM timeline_events WHERE id=?', (eid,))
+    if cur.rowcount == 0:
+        return jsonify({'error': 'Not found'}), 404
+    return jsonify({'ok': True})
+
+
 # ── API: meetings ────────────────────────────────────────────────────────────
 
 @app.route('/api/meetings', methods=['GET'])

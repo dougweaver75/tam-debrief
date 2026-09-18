@@ -461,3 +461,52 @@ def test_company_note_company_not_found(client):
 def test_note_update_and_delete_not_found(client):
     assert client.put('/api/notes/999', json={'body': 'x'}).status_code == 404
     assert client.delete('/api/notes/999').status_code == 404
+
+
+def test_timeline_events_crud(client):
+    coid = _make_company(client)
+    r = client.post(f'/api/companies/{coid}/timeline_events', json={
+        'category': 'renewal', 'title': 'Contract renewed',
+        'description': 'Renewed for 1yr', 'event_date': '2026-06-01'
+    })
+    assert r.status_code == 201
+    ev = r.get_json()
+    assert ev['category'] == 'renewal'
+    eid = ev['id']
+
+    r_upd = client.put(f'/api/timeline_events/{eid}', json={
+        'category': 'milestone', 'title': 'Contract renewed (updated)',
+        'description': '', 'event_date': '2026-06-02'
+    })
+    assert r_upd.status_code == 200
+    assert r_upd.get_json()['category'] == 'milestone'
+    assert r_upd.get_json()['event_date'] == '2026-06-02'
+
+    r_del = client.delete(f'/api/timeline_events/{eid}')
+    assert r_del.status_code == 200
+    r_del2 = client.delete(f'/api/timeline_events/{eid}')
+    assert r_del2.status_code == 404
+
+def test_timeline_event_invalid_category_rejected(client):
+    coid = _make_company(client)
+    r = client.post(f'/api/companies/{coid}/timeline_events', json={
+        'category': 'bogus', 'title': 'Bad', 'event_date': '2026-06-01'
+    })
+    assert r.status_code == 400
+
+def test_timeline_event_defaults_category_other(client):
+    coid = _make_company(client)
+    r = client.post(f'/api/companies/{coid}/timeline_events', json={
+        'title': 'Untyped', 'event_date': '2026-06-01'
+    })
+    assert r.status_code == 201
+    assert r.get_json()['category'] == 'other'
+
+def test_timeline_event_requires_title_and_date(client):
+    coid = _make_company(client)
+    assert client.post(f'/api/companies/{coid}/timeline_events', json={'event_date': '2026-06-01'}).status_code == 400
+    assert client.post(f'/api/companies/{coid}/timeline_events', json={'title': 'X'}).status_code == 400
+
+def test_timeline_event_company_not_found(client):
+    r = client.post('/api/companies/999/timeline_events', json={'title': 'X', 'event_date': '2026-06-01'})
+    assert r.status_code == 404

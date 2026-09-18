@@ -480,32 +480,57 @@ function renderInteractions(interactions) {
         </div>
         <div class="interaction-summary">${esc(i.summary)}</div>
       </div>
-      <button class="btn btn-danger btn-sm" onclick="deleteInteraction(${i.id})" title="Delete">${icon('close')}</button>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-secondary btn-sm" onclick="openEditInteraction(${i.id})">Edit</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteInteraction(${i.id})" title="Delete">${icon('close')}</button>
+      </div>
     </div>
   `).join('');
 }
 
 function openLogInteraction() {
+  document.getElementById('interactionModalTitle').textContent = 'Log Interaction';
+  document.getElementById('iId').value = '';
   document.getElementById('interactionForm').reset();
   document.getElementById('iDate').value = new Date().toISOString().slice(0,10);
   openModal('interactionModal');
 }
 
+async function openEditInteraction(id) {
+  try {
+    const interactions = await API.get(`/api/contacts/${_currentContact.id}/interactions`);
+    const i = interactions.find(x => x.id === id);
+    if (!i) return;
+    document.getElementById('interactionModalTitle').textContent = 'Edit Interaction';
+    document.getElementById('iId').value = i.id;
+    document.getElementById('iType').value = i.type;
+    document.getElementById('iDate').value = i.interaction_date;
+    document.getElementById('iSummary').value = i.summary;
+    openModal('interactionModal');
+  } catch (e) { showToast('Failed to load interaction.'); }
+}
+
 async function submitInteraction(e) {
   e.preventDefault();
+  const id   = document.getElementById('iId').value;
   const data = {
-    contact_id:       _currentContact.id,
     type:             document.getElementById('iType').value,
     summary:          document.getElementById('iSummary').value.trim(),
     interaction_date: document.getElementById('iDate').value,
   };
   try {
-    await API.post('/api/interactions', data);
+    if (id) {
+      await API.put(`/api/interactions/${id}`, data);
+      showToast('Interaction updated.');
+    } else {
+      data.contact_id = _currentContact.id;
+      await API.post('/api/interactions', data);
+      showToast('Interaction logged.');
+    }
     closeModal();
-    showToast('Interaction logged.');
     const interactions = await API.get(`/api/contacts/${_currentContact.id}/interactions`);
     renderInteractions(interactions);
-  } catch (e) { showToast('Failed to log interaction.'); }
+  } catch (e) { showToast('Failed to save interaction.'); }
 }
 
 function deleteInteraction(id) {

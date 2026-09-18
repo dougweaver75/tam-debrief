@@ -2,6 +2,7 @@ import os
 import sys
 import tempfile
 import pytest
+from datetime import datetime, timedelta
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
@@ -578,3 +579,52 @@ def test_company_timeline_excludes_action_items_without_due_date(client):
 def test_company_timeline_not_found(client):
     r = client.get('/api/companies/999/timeline')
     assert r.status_code == 404
+
+def test_dashboard_recent_activity_and_upcoming(client):
+    coid = _make_company(client)
+    today     = datetime.utcnow().date()
+    yesterday = (today - timedelta(days=1)).isoformat()
+    tomorrow  = (today + timedelta(days=1)).isoformat()
+
+    client.post('/api/meetings', json={'title': 'Past Meeting', 'meeting_date': yesterday, 'company_id': coid})
+    client.post('/api/meetings', json={'title': 'Future Meeting', 'meeting_date': tomorrow, 'company_id': coid})
+    client.post(f'/api/companies/{coid}/timeline_events', json={
+        'category': 'go-live', 'title': 'Past event', 'event_date': yesterday
+    })
+    client.post(f'/api/companies/{coid}/timeline_events', json={
+        'category': 'renewal', 'title': 'Future event', 'event_date': tomorrow
+    })
+
+    d = client.get('/api/dashboard').get_json()
+    assert 'recent_activity' in d
+    assert 'upcoming' in d
+
+    recent_titles = {i['title'] for i in d['recent_activity']}
+    assert 'Past Meeting' in recent_titles
+    assert 'Past event' in recent_titles
+    assert 'Future Meeting' not in recent_titles
+    assert 'Future event' not in recent_titles
+
+    upcoming_titles = {i['title'] for i in d['upcoming']}
+    assert 'Future Meeting' in upcoming_titles
+    assert 'Future event' in upcoming_titles
+    assert 'Past Meeting' not in upcoming_titles
+    assert 'Past event' not in upcoming_titles
+
+def test_dashboard_upcoming_includes_open_action_items(client):
+    coid = _make_company(client)
+    tomorrow = (datetime.utcnow().date() + timedelta(days=1)).isoformat()
+    r_m = client.post('/api/meetings', json={'title': 'M', 'meeting_date': '2026-06-01', 'company_id': coid})
+    mid = r_m.get_json()['id']
+    client.post(f'/api/meetings/{mid}/action_items', json={'description': 'Follow up', 'due_date': tomorrow})
+    d = client.get('/api/dashboard').get_json()
+    assert any(i['title'] == 'Follow up' for i in d['upcoming'])
+
+def test_dashboard_recent_activity_capped_at_15(client):
+    coid = _make_company(client)
+    for i in range(20):
+        client.post(f'/api/companies/{coid}/timeline_events', json={
+            'category': 'other', 'title': f'Event {i}', 'event_date': f'2020-01-{(i % 28) + 1:02d}'
+        })
+    d = client.get('/api/dashboard').get_json()
+    assert len(d['recent_activity']) == 15

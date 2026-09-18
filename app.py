@@ -726,6 +726,91 @@ def api_dashboard():
         '(SELECT COUNT(*) FROM meetings  WHERE company_id=co.id) AS meeting_count '
         'FROM companies co ORDER BY co.name COLLATE NOCASE ASC'
     )
+
+    today = datetime.utcnow().strftime('%Y-%m-%d')
+
+    recent_meetings = query(
+        'SELECT m.id, m.title, m.meeting_date AS date, co.id AS company_id, co.name AS company_name '
+        'FROM meetings m JOIN companies co ON co.id=m.company_id '
+        'WHERE m.meeting_date <= ? ORDER BY m.meeting_date DESC LIMIT 15',
+        (today,)
+    )
+    recent_notes = query(
+        'SELECT cn.id, cn.body, cn.created_at AS date, co.id AS company_id, co.name AS company_name '
+        'FROM company_notes cn JOIN companies co ON co.id=cn.company_id '
+        'ORDER BY cn.created_at DESC LIMIT 15'
+    )
+    recent_events = query(
+        'SELECT te.id, te.category, te.title, te.event_date AS date, '
+        'co.id AS company_id, co.name AS company_name '
+        'FROM timeline_events te JOIN companies co ON co.id=te.company_id '
+        'WHERE te.event_date <= ? ORDER BY te.event_date DESC LIMIT 15',
+        (today,)
+    )
+    recent_activity = []
+    for m in recent_meetings:
+        recent_activity.append({
+            'source': 'meeting', 'date': m['date'], 'company_id': m['company_id'],
+            'company_name': m['company_name'], 'title': m['title'], 'category': None,
+            'link': f"/companies/{m['company_id']}"
+        })
+    for n in recent_notes:
+        recent_activity.append({
+            'source': 'note', 'date': n['date'], 'company_id': n['company_id'],
+            'company_name': n['company_name'], 'title': n['body'], 'category': None,
+            'link': f"/companies/{n['company_id']}"
+        })
+    for e in recent_events:
+        recent_activity.append({
+            'source': 'event', 'date': e['date'], 'company_id': e['company_id'],
+            'company_name': e['company_name'], 'title': e['title'], 'category': e['category'],
+            'link': f"/companies/{e['company_id']}"
+        })
+    recent_activity.sort(key=lambda x: x['date'], reverse=True)
+    recent_activity = recent_activity[:15]
+
+    upcoming_meetings = query(
+        'SELECT m.id, m.title, m.meeting_date AS date, co.id AS company_id, co.name AS company_name '
+        'FROM meetings m JOIN companies co ON co.id=m.company_id '
+        'WHERE m.meeting_date >= ? ORDER BY m.meeting_date ASC LIMIT 20',
+        (today,)
+    )
+    upcoming_ai = query(
+        'SELECT ai.id, ai.description, ai.due_date AS date, co.id AS company_id, co.name AS company_name '
+        'FROM action_items ai JOIN meetings m ON m.id=ai.meeting_id '
+        'JOIN companies co ON co.id=m.company_id '
+        'WHERE ai.completed=0 AND ai.due_date >= ? ORDER BY ai.due_date ASC LIMIT 20',
+        (today,)
+    )
+    upcoming_events = query(
+        'SELECT te.id, te.category, te.title, te.event_date AS date, '
+        'co.id AS company_id, co.name AS company_name '
+        'FROM timeline_events te JOIN companies co ON co.id=te.company_id '
+        'WHERE te.event_date >= ? ORDER BY te.event_date ASC LIMIT 20',
+        (today,)
+    )
+    upcoming = []
+    for m in upcoming_meetings:
+        upcoming.append({
+            'source': 'meeting', 'date': m['date'], 'company_id': m['company_id'],
+            'company_name': m['company_name'], 'title': m['title'], 'category': None,
+            'link': f"/companies/{m['company_id']}"
+        })
+    for a in upcoming_ai:
+        upcoming.append({
+            'source': 'action_item', 'date': a['date'], 'company_id': a['company_id'],
+            'company_name': a['company_name'], 'title': a['description'], 'category': None,
+            'link': f"/companies/{a['company_id']}"
+        })
+    for e in upcoming_events:
+        upcoming.append({
+            'source': 'event', 'date': e['date'], 'company_id': e['company_id'],
+            'company_name': e['company_name'], 'title': e['title'], 'category': e['category'],
+            'link': f"/companies/{e['company_id']}"
+        })
+    upcoming.sort(key=lambda x: x['date'])
+    upcoming = upcoming[:20]
+
     return jsonify({
         'total_contacts':       total,
         'total_meetings':       meetings,
@@ -733,6 +818,8 @@ def api_dashboard():
         'recent_interactions':  as_list(recent),
         'action_items':         as_list(action_items),
         'companies':            as_list(companies),
+        'recent_activity':      recent_activity,
+        'upcoming':             upcoming,
     })
 
 

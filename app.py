@@ -385,6 +385,55 @@ def api_company_action_items(coid):
     return jsonify(as_list(rows))
 
 
+# ── API: company notes ───────────────────────────────────────────────────────
+
+@app.route('/api/companies/<int:coid>/notes', methods=['GET'])
+def api_list_company_notes(coid):
+    if not query('SELECT id FROM companies WHERE id=?', (coid,), one=True):
+        return jsonify({'error': 'Not found'}), 404
+    rows = query(
+        'SELECT * FROM company_notes WHERE company_id=? ORDER BY created_at DESC, id DESC',
+        (coid,)
+    )
+    return jsonify(as_list(rows))
+
+
+@app.route('/api/companies/<int:coid>/notes', methods=['POST'])
+def api_create_company_note(coid):
+    if not query('SELECT id FROM companies WHERE id=?', (coid,), one=True):
+        return jsonify({'error': 'Not found'}), 404
+    data = request.get_json(force=True) or {}
+    body = data.get('body', '').strip()
+    if not body:
+        return jsonify({'error': 'body is required'}), 400
+    ts  = now_iso()
+    cur = execute(
+        'INSERT INTO company_notes (company_id,body,created_at,updated_at) VALUES (?,?,?,?)',
+        (coid, body, ts, ts)
+    )
+    return jsonify(as_dict(query('SELECT * FROM company_notes WHERE id=?', (cur.lastrowid,), one=True))), 201
+
+
+@app.route('/api/notes/<int:nid>', methods=['PUT'])
+def api_update_company_note(nid):
+    if not query('SELECT id FROM company_notes WHERE id=?', (nid,), one=True):
+        return jsonify({'error': 'Not found'}), 404
+    data = request.get_json(force=True) or {}
+    body = data.get('body', '').strip()
+    if not body:
+        return jsonify({'error': 'body is required'}), 400
+    execute('UPDATE company_notes SET body=?,updated_at=? WHERE id=?', (body, now_iso(), nid))
+    return jsonify(as_dict(query('SELECT * FROM company_notes WHERE id=?', (nid,), one=True)))
+
+
+@app.route('/api/notes/<int:nid>', methods=['DELETE'])
+def api_delete_company_note(nid):
+    cur = execute('DELETE FROM company_notes WHERE id=?', (nid,))
+    if cur.rowcount == 0:
+        return jsonify({'error': 'Not found'}), 404
+    return jsonify({'ok': True})
+
+
 # ── API: meetings ────────────────────────────────────────────────────────────
 
 @app.route('/api/meetings', methods=['GET'])

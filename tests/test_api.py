@@ -412,3 +412,52 @@ def test_new_tables_and_columns_exist(client):
     cols = {r[1] for r in conn.execute("PRAGMA table_info(interactions)")}
     assert 'updated_at' in cols
     conn.close()
+
+
+def _make_company(client, name='Acme Corp'):
+    r = client.post('/api/companies', json={'name': name})
+    return r.get_json()['id']
+
+
+def test_company_notes_crud(client):
+    coid = _make_company(client)
+    r = client.post(f'/api/companies/{coid}/notes', json={'body': 'First note'})
+    assert r.status_code == 201
+    note = r.get_json()
+    assert note['body'] == 'First note'
+    nid = note['id']
+
+    r2 = client.post(f'/api/companies/{coid}/notes', json={'body': 'Second note'})
+    nid2 = r2.get_json()['id']
+
+    r3 = client.get(f'/api/companies/{coid}/notes')
+    data = r3.get_json()
+    assert len(data) == 2
+    assert data[0]['id'] == nid2  # newest first
+
+    r4 = client.put(f'/api/notes/{nid}', json={'body': 'Updated note'})
+    assert r4.status_code == 200
+    assert r4.get_json()['body'] == 'Updated note'
+
+    r5 = client.delete(f'/api/notes/{nid2}')
+    assert r5.status_code == 200
+    r6 = client.get(f'/api/companies/{coid}/notes')
+    assert len(r6.get_json()) == 1
+
+
+def test_company_note_body_required(client):
+    coid = _make_company(client)
+    r = client.post(f'/api/companies/{coid}/notes', json={'body': '   '})
+    assert r.status_code == 400
+
+
+def test_company_note_company_not_found(client):
+    r = client.post('/api/companies/999/notes', json={'body': 'x'})
+    assert r.status_code == 404
+    r2 = client.get('/api/companies/999/notes')
+    assert r2.status_code == 404
+
+
+def test_note_update_and_delete_not_found(client):
+    assert client.put('/api/notes/999', json={'body': 'x'}).status_code == 404
+    assert client.delete('/api/notes/999').status_code == 404

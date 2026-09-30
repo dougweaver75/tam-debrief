@@ -1241,13 +1241,14 @@ function initCompanyDetail(companyId) {
 
 async function loadCompanyDetail(companyId) {
   try {
-    const [company, contacts, meetings, actionItems, notes, timeline] = await Promise.all([
+    const [company, contacts, meetings, actionItems, notes, timeline, team] = await Promise.all([
       API.get(`/api/companies/${companyId}`),
       API.get(`/api/companies/${companyId}/contacts`),
       API.get(`/api/companies/${companyId}/meetings`),
       API.get(`/api/companies/${companyId}/action-items`),
       API.get(`/api/companies/${companyId}/notes`),
-      API.get(`/api/companies/${companyId}/timeline`)
+      API.get(`/api/companies/${companyId}/timeline`),
+      API.get(`/api/companies/${companyId}/team`)
     ]);
     _currentCompany = company;
     renderCompanyDetail(company);
@@ -1256,6 +1257,8 @@ async function loadCompanyDetail(companyId) {
     renderCompanyActionItems(actionItems);
     renderCompanyNotes(notes);
     renderCompanyTimeline(timeline);
+    _teamRefresh = refreshCompanyTeam;
+    document.getElementById('companyTeamList').innerHTML = renderTeamRows(team);
   } catch (e) {
     document.getElementById('companyDetailRoot').innerHTML =
       '<p class="empty-state">Company not found.</p>';
@@ -1560,6 +1563,140 @@ function deleteTimelineEvent(id) {
       await refreshCompanyFeeds();
     } catch (e) { showToast('Delete failed.'); }
   });
+}
+
+// ── Account Team ──────────────────────────────────────────────────────────
+
+const TEAM_ROLE_LABELS = {
+  account_executive: 'Account Executive',
+  customer_service_manager: 'Customer Service Manager',
+  technical_account_manager: 'Technical Account Manager',
+  solutions_consultant: 'Solutions Consultant',
+  other: 'Other'
+};
+let _teamById = {};
+let _teamRefresh = null;
+
+function teamRoleLabel(m) {
+  return m.role === 'other' ? m.custom_title : (TEAM_ROLE_LABELS[m.role] || m.role);
+}
+
+function renderTeamRows(members) {
+  if (!members.length) return '<p class="empty-state">No team members yet.</p>';
+  members.forEach(m => { _teamById[m.id] = m; });
+  return members.map(m => {
+    const contact = [m.email ? esc(m.email) : '', m.phone ? esc(m.phone) : '']
+      .filter(Boolean).join(' · ');
+    return `
+    <div class="interaction-item">
+      <div style="flex:1">
+        <div class="interaction-date">${esc(teamRoleLabel(m))}</div>
+        <div class="interaction-summary">${esc(m.name)}</div>
+        ${contact ? `<div class="interaction-summary" style="color:var(--text-muted)">${contact}</div>` : ''}
+      </div>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-secondary btn-sm" onclick="openEditTeamMember(${m.id})">Edit</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteTeamMember(${m.id})" title="Delete">${icon('close')}</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function toggleTeamTitle() {
+  const isOther = document.getElementById('tmRole').value === 'other';
+  document.getElementById('tmTitleRow').style.display = isOther ? '' : 'none';
+  document.getElementById('tmTitle').required = isOther;
+}
+
+function openAddTeamMember(companyId, refreshFn) {
+  _teamRefresh = refreshFn;
+  document.getElementById('teamMemberModalTitle').textContent = 'Add Team Member';
+  document.getElementById('teamMemberForm').reset();
+  document.getElementById('tmId').value = '';
+  document.getElementById('tmCompanyId').value = companyId;
+  toggleTeamTitle();
+  openModal('teamMemberModal');
+}
+
+function openEditTeamMember(id) {
+  const m = _teamById[id];
+  if (!m) return;
+  document.getElementById('teamMemberModalTitle').textContent = 'Edit Team Member';
+  document.getElementById('tmId').value = m.id;
+  document.getElementById('tmCompanyId').value = m.company_id;
+  document.getElementById('tmRole').value = m.role;
+  document.getElementById('tmTitle').value = m.custom_title || '';
+  document.getElementById('tmName').value = m.name;
+  document.getElementById('tmEmail').value = m.email || '';
+  document.getElementById('tmPhone').value = m.phone || '';
+  toggleTeamTitle();
+  openModal('teamMemberModal');
+}
+
+async function submitTeamMember(e) {
+  e.preventDefault();
+  const id = document.getElementById('tmId').value;
+  const data = {
+    role:         document.getElementById('tmRole').value,
+    custom_title: document.getElementById('tmTitle').value.trim(),
+    name:         document.getElementById('tmName').value.trim(),
+    email:        document.getElementById('tmEmail').value.trim(),
+    phone:        document.getElementById('tmPhone').value.trim(),
+  };
+  try {
+    if (id) {
+      await API.put(`/api/team/${id}`, data);
+      showToast('Team member updated.');
+    } else {
+      await API.post(`/api/companies/${document.getElementById('tmCompanyId').value}/team`, data);
+      showToast('Team member added.');
+    }
+    closeModal();
+    if (_teamRefresh) await _teamRefresh();
+  } catch (err) { showToast('Save failed.'); }
+}
+
+function deleteTeamMember(id) {
+  confirmDelete('Remove this team member?', async () => {
+    try {
+      await API.del(`/api/team/${id}`);
+      showToast('Team member removed.');
+      if (_teamRefresh) await _teamRefresh();
+    } catch (err) { showToast('Delete failed.'); }
+  });
+}
+
+// Company page
+async function refreshCompanyTeam() {
+  const members = await API.get(`/api/companies/${_currentCompany.id}/team`);
+  document.getElementById('companyTeamList').innerHTML = renderTeamRows(members);
+}
+
+// Account Teams page
+async function refreshAccountTeams() {
+  const root = document.getElementById('accountTeamsRoot');
+  try {
+    const companies = await API.get('/api/account-teams');
+    if (!companies.length) {
+      root.innerHTML = '<p class="empty-state">No companies yet. Add a company first.</p>';
+      return;
+    }
+    root.innerHTML = companies.map(c => `
+      <div class="card">
+        <div class="section-header">
+          <div class="card-title" style="margin:0"><a href="/companies/${c.id}" class="table-link">${esc(c.name)}</a></div>
+          <button class="btn btn-primary btn-sm" onclick="openAddTeamMember(${c.id}, refreshAccountTeams)">+ Add Member</button>
+        </div>
+        ${renderTeamRows(c.members)}
+      </div>`).join('');
+  } catch (err) {
+    root.innerHTML = '<p class="empty-state">Failed to load account teams.</p>';
+  }
+}
+
+function initAccountTeams() {
+  _teamRefresh = refreshAccountTeams;
+  refreshAccountTeams();
 }
 
 // ── Dashboard ──────────────────────────────────────────────────────────────

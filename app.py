@@ -123,6 +123,10 @@ def new_meeting_page():
 def sanitize_page():
     return render_template('sanitize.html')
 
+@app.route('/account-teams')
+def account_teams_page():
+    return render_template('account_teams.html')
+
 
 # ── API: contacts ────────────────────────────────────────────────────────────
 
@@ -549,6 +553,101 @@ def api_company_timeline(coid):
 
     items.sort(key=lambda x: x['date'], reverse=True)
     return jsonify(items)
+
+
+# ── API: account team ────────────────────────────────────────────────────────
+
+TEAM_ROLES = ('account_executive', 'customer_service_manager',
+              'technical_account_manager', 'solutions_consultant', 'other')
+
+TEAM_ORDER_SQL = (
+    "CASE role WHEN 'account_executive' THEN 1 WHEN 'customer_service_manager' THEN 2 "
+    "WHEN 'technical_account_manager' THEN 3 WHEN 'solutions_consultant' THEN 4 ELSE 5 END, "
+    "LOWER(name), id"
+)
+
+def _team_fields(data):
+    """Validate a team-member payload. Returns (fields_dict, error_message)."""
+    name = (data.get('name') or '').strip()
+    role = data.get('role')
+    if not name:
+        return None, 'name is required'
+    if role not in TEAM_ROLES:
+        return None, 'invalid role'
+    title = (data.get('custom_title') or '').strip()
+    if role == 'other':
+        if not title:
+            return None, 'custom_title is required for role other'
+    else:
+        title = ''
+    return {
+        'role': role, 'custom_title': title, 'name': name,
+        'email': (data.get('email') or '').strip(),
+        'phone': (data.get('phone') or '').strip(),
+    }, None
+
+
+@app.route('/api/companies/<int:coid>/team', methods=['GET'])
+def api_list_team(coid):
+    if not query('SELECT id FROM companies WHERE id=?', (coid,), one=True):
+        return jsonify({'error': 'Not found'}), 404
+    rows = query(
+        f'SELECT * FROM account_team_members WHERE company_id=? ORDER BY {TEAM_ORDER_SQL}',
+        (coid,)
+    )
+    return jsonify(as_list(rows))
+
+
+@app.route('/api/companies/<int:coid>/team', methods=['POST'])
+def api_create_team_member(coid):
+    if not query('SELECT id FROM companies WHERE id=?', (coid,), one=True):
+        return jsonify({'error': 'Not found'}), 404
+    f, err = _team_fields(request.get_json(force=True) or {})
+    if err:
+        return jsonify({'error': err}), 400
+    ts  = now_iso()
+    cur = execute(
+        'INSERT INTO account_team_members '
+        '(company_id,role,custom_title,name,email,phone,created_at,updated_at) '
+        'VALUES (?,?,?,?,?,?,?,?)',
+        (coid, f['role'], f['custom_title'], f['name'], f['email'], f['phone'], ts, ts)
+    )
+    return jsonify(as_dict(query('SELECT * FROM account_team_members WHERE id=?',
+                                 (cur.lastrowid,), one=True))), 201
+
+
+@app.route('/api/team/<int:tid>', methods=['PUT'])
+def api_update_team_member(tid):
+    if not query('SELECT id FROM account_team_members WHERE id=?', (tid,), one=True):
+        return jsonify({'error': 'Not found'}), 404
+    f, err = _team_fields(request.get_json(force=True) or {})
+    if err:
+        return jsonify({'error': err}), 400
+    execute(
+        'UPDATE account_team_members SET role=?,custom_title=?,name=?,email=?,phone=?,updated_at=? '
+        'WHERE id=?',
+        (f['role'], f['custom_title'], f['name'], f['email'], f['phone'], now_iso(), tid)
+    )
+    return jsonify(as_dict(query('SELECT * FROM account_team_members WHERE id=?', (tid,), one=True)))
+
+
+@app.route('/api/team/<int:tid>', methods=['DELETE'])
+def api_delete_team_member(tid):
+    cur = execute('DELETE FROM account_team_members WHERE id=?', (tid,))
+    if cur.rowcount == 0:
+        return jsonify({'error': 'Not found'}), 404
+    return jsonify({'ok': True})
+
+
+@app.route('/api/account-teams', methods=['GET'])
+def api_account_teams():
+    companies = as_list(query('SELECT id, name FROM companies ORDER BY LOWER(name), id'))
+    by_company = {c['id']: [] for c in companies}
+    for m in query(f'SELECT * FROM account_team_members ORDER BY {TEAM_ORDER_SQL}'):
+        by_company[m['company_id']].append(dict(m))
+    for c in companies:
+        c['members'] = by_company[c['id']]
+    return jsonify(companies)
 
 
 # ── API: meetings ────────────────────────────────────────────────────────────

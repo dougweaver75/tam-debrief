@@ -653,3 +653,116 @@ def test_dashboard_includes_companyless_meetings(client):
     future_item = next(i for i in d['upcoming'] if i['title'] == 'Companyless Future Meeting')
     assert future_item['company_name'] == '—'
     assert future_item['link'] == f'/meetings/{future_mid}'
+
+
+# ── Account team ─────────────────────────────────────────────────────────────
+
+def _add_member(client, coid, **kw):
+    body = {'role': 'account_executive', 'name': 'Pat Doe'}
+    body.update(kw)
+    return client.post(f'/api/companies/{coid}/team', json=body)
+
+
+def test_account_team_table_exists(client):
+    import sqlite3
+    conn = sqlite3.connect(ccrm_app.DB_PATH)
+    tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    conn.close()
+    assert 'account_team_members' in tables
+
+
+def test_team_member_crud(client):
+    coid = _make_company(client)
+    r = _add_member(client, coid, email='pat@us.com', phone='555-1')
+    assert r.status_code == 201
+    m = r.get_json()
+    assert m['role'] == 'account_executive'
+    assert m['name'] == 'Pat Doe'
+    assert m['email'] == 'pat@us.com'
+    assert m['custom_title'] == ''
+
+    r2 = client.put(f"/api/team/{m['id']}", json={
+        'role': 'technical_account_manager', 'name': 'Pat D.', 'email': '', 'phone': ''})
+    assert r2.status_code == 200
+    assert r2.get_json()['role'] == 'technical_account_manager'
+    assert r2.get_json()['name'] == 'Pat D.'
+
+    assert client.delete(f"/api/team/{m['id']}").status_code == 200
+    assert client.get(f'/api/companies/{coid}/team').get_json() == []
+
+
+def test_team_other_requires_title(client):
+    coid = _make_company(client)
+    assert _add_member(client, coid, role='other').status_code == 400
+    assert _add_member(client, coid, role='other', custom_title='   ').status_code == 400
+    r = _add_member(client, coid, role='other', custom_title='Architect')
+    assert r.status_code == 201
+    assert r.get_json()['custom_title'] == 'Architect'
+
+
+def test_team_title_cleared_when_not_other(client):
+    coid = _make_company(client)
+    r = _add_member(client, coid, role='solutions_consultant', custom_title='Ignored')
+    assert r.get_json()['custom_title'] == ''
+    mid = _add_member(client, coid, role='other', custom_title='Architect').get_json()['id']
+    r2 = client.put(f'/api/team/{mid}', json={
+        'role': 'account_executive', 'name': 'Pat Doe', 'custom_title': 'Architect'})
+    assert r2.get_json()['custom_title'] == ''
+
+
+def test_team_validation(client):
+    coid = _make_company(client)
+    assert _add_member(client, coid, name='  ').status_code == 400
+    assert _add_member(client, coid, role='bogus').status_code == 400
+    assert _add_member(client, 999).status_code == 404
+    assert client.get('/api/companies/999/team').status_code == 404
+    assert client.put('/api/team/999', json={'role': 'other', 'name': 'x', 'custom_title': 't'}).status_code == 404
+    assert client.delete('/api/team/999').status_code == 404
+
+
+def test_team_multiple_per_role_and_ordering(client):
+    coid = _make_company(client)
+    _add_member(client, coid, role='other', custom_title='Architect', name='Zed')
+    _add_member(client, coid, role='solutions_consultant', name='Sam')
+    _add_member(client, coid, role='technical_account_manager', name='bob')
+    _add_member(client, coid, role='technical_account_manager', name='Alice')
+    _add_member(client, coid, role='customer_service_manager', name='Cy')
+    _add_member(client, coid, role='account_executive', name='Ann')
+    members = client.get(f'/api/companies/{coid}/team').get_json()
+    assert [(m['role'], m['name']) for m in members] == [
+        ('account_executive', 'Ann'),
+        ('customer_service_manager', 'Cy'),
+        ('technical_account_manager', 'Alice'),
+        ('technical_account_manager', 'bob'),
+        ('solutions_consultant', 'Sam'),
+        ('other', 'Zed'),
+    ]
+
+
+def test_team_cascades_with_company(client):
+    coid = _make_company(client)
+    _add_member(client, coid)
+    client.delete(f'/api/companies/{coid}')
+    import sqlite3
+    conn = sqlite3.connect(ccrm_app.DB_PATH)
+    assert conn.execute('SELECT COUNT(*) FROM account_team_members').fetchone()[0] == 0
+    conn.close()
+
+
+def test_account_teams_overview(client):
+    b = _make_company(client, 'beta')
+    a = _make_company(client, 'Acme')
+    _make_company(client, 'Empty Co')
+    _add_member(client, b, name='Bee')
+    _add_member(client, a, role='technical_account_manager', name='Tam')
+    _add_member(client, a, role='account_executive', name='Ace')
+    data = client.get('/api/account-teams').get_json()
+    assert [c['name'] for c in data] == ['Acme', 'beta', 'Empty Co']
+    assert [m['name'] for m in data[0]['members']] == ['Ace', 'Tam']
+    assert [m['name'] for m in data[1]['members']] == ['Bee']
+    assert data[2]['members'] == []
+
+
+def test_account_teams_page_renders(client):
+    r = client.get('/account-teams')
+    assert r.status_code == 200

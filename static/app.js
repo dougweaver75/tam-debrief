@@ -1751,6 +1751,40 @@ function initAccountTeams() {
 
 // ── Dashboard ──────────────────────────────────────────────────────────────
 
+const DASH_LIMIT = 5;
+
+function renderDashActivityItem(i) {
+  return `
+    <div class="interaction-item">
+      <div style="flex:1">
+        <div style="display:flex;align-items:center;gap:8px">
+          ${i.category ? badgeHtml(i.category, TIMELINE_CATEGORY_LABELS[i.category] || i.category)
+                        : badgeHtml(i.source, TIMELINE_SOURCE_LABELS[i.source] || i.source)}
+          <a href="${i.link}" class="table-link">${esc(i.company_name)}</a>
+          <span class="interaction-date">${fmtDate(i.date)}</span>
+        </div>
+        <div class="interaction-summary">${esc(i.title)}</div>
+      </div>
+    </div>`;
+}
+
+// Shows the first DASH_LIMIT items with a Show more / Show less toggle.
+function renderExpandableList(el, items, emptyHtml) {
+  if (!items.length) { el.innerHTML = emptyHtml; return; }
+  let expanded = false;
+  const draw = () => {
+    const shown = expanded ? items : items.slice(0, DASH_LIMIT);
+    const extra = items.length - DASH_LIMIT;
+    el.innerHTML = shown.map(renderDashActivityItem).join('') +
+      (extra > 0
+        ? `<button type="button" class="btn btn-secondary btn-sm dash-more" style="margin-top:8px">${expanded ? 'Show less' : `Show ${extra} more`}</button>`
+        : '');
+    const btn = el.querySelector('.dash-more');
+    if (btn) btn.onclick = () => { expanded = !expanded; draw(); };
+  };
+  draw();
+}
+
 function initDashboard() {
   loadDashboard();
 }
@@ -1833,40 +1867,8 @@ function renderDashboard(data) {
   }
 
   const raEl = document.getElementById('dashRecentActivity');
-  if (raEl) {
-    const items = data.recent_activity || [];
-    raEl.innerHTML = items.length
-      ? items.map(i => `
-        <div class="interaction-item">
-          <div style="flex:1">
-            <div style="display:flex;align-items:center;gap:8px">
-              ${i.category ? badgeHtml(i.category, TIMELINE_CATEGORY_LABELS[i.category] || i.category)
-                            : badgeHtml(i.source, TIMELINE_SOURCE_LABELS[i.source] || i.source)}
-              <a href="${i.link}" class="table-link">${esc(i.company_name)}</a>
-              <span class="interaction-date">${fmtDate(i.date)}</span>
-            </div>
-            <div class="interaction-summary">${esc(i.title)}</div>
-          </div>
-        </div>`).join('')
-      : '<p class="empty-state">No recent activity.</p>';
-  }
+  if (raEl) renderExpandableList(raEl, data.recent_activity || [], '<p class="empty-state">No recent activity.</p>');
 
   const upEl = document.getElementById('dashUpcoming');
-  if (upEl) {
-    const items = data.upcoming || [];
-    upEl.innerHTML = items.length
-      ? items.map(i => `
-        <div class="interaction-item">
-          <div style="flex:1">
-            <div style="display:flex;align-items:center;gap:8px">
-              ${i.category ? badgeHtml(i.category, TIMELINE_CATEGORY_LABELS[i.category] || i.category)
-                            : badgeHtml(i.source, TIMELINE_SOURCE_LABELS[i.source] || i.source)}
-              <a href="${i.link}" class="table-link">${esc(i.company_name)}</a>
-              <span class="interaction-date">${fmtDate(i.date)}</span>
-            </div>
-            <div class="interaction-summary">${esc(i.title)}</div>
-          </div>
-        </div>`).join('')
-      : '<p class="empty-state">Nothing upcoming.</p>';
-  }
+  if (upEl) renderExpandableList(upEl, data.upcoming || [], '<p class="empty-state">Nothing upcoming.</p>');
 }

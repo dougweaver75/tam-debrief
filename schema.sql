@@ -93,3 +93,17 @@ CREATE TABLE IF NOT EXISTS timeline_events (
     created_at  TEXT    NOT NULL,
     updated_at  TEXT    NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS account_team_members (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    company_id   INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+    role         TEXT    NOT NULL
+                 CHECK(role IN ('account_executive','customer_service_manager',
+                                'technical_account_manager','solutions_consultant','other')),
+    custom_title TEXT    DEFAULT '',
+    name         TEXT    NOT NULL,
+    email        TEXT    DEFAULT '',
+    phone        TEXT    DEFAULT '',
+    created_at   TEXT    NOT NULL,
+    updated_at   TEXT    NOT NULL
+);

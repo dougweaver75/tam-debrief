@@ -37,6 +37,13 @@
         </a>
       </li>
       <li>
+        <a href="/account-teams" title="Account Teams"
+           class="nav-link {% if request.path.startswith('/account-teams') %}active{% endif %}">
+          <span class="material-icons-round nav-icon">groups</span>
+          <span class="nav-label">Account Teams</span>
+        </a>
+      </li>
+      <li>
         <a href="/meetings" title="Meetings"
            class="nav-link {% if request.path.startswith('/meetings') %}active{% endif %}">
           <span class="material-icons-round nav-icon">calendar_today</span>
@@ -67,6 +74,37 @@
       <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
       <button class="btn btn-danger" id="confirmModalOk">Delete</button>
     </div>
+  </div>
+
+  <!-- Team Member Modal (shared by company page + account teams page) -->
+  <div class="modal" id="teamMemberModal">
+    <div class="modal-title" id="teamMemberModalTitle">Add Team Member</div>
+    <form id="teamMemberForm" onsubmit="submitTeamMember(event)">
+      <input type="hidden" id="tmId">
+      <input type="hidden" id="tmCompanyId">
+      <div class="form-row">
+        <label>Role *</label>
+        <select id="tmRole" onchange="toggleTeamTitle()">
+          <option value="account_executive">Account Executive</option>
+          <option value="customer_service_manager">Customer Service Manager</option>
+          <option value="technical_account_manager">Technical Account Manager</option>
+          <option value="solutions_consultant">Solutions Consultant</option>
+          <option value="other">Other</option>
+        </select>
+      </div>
+      <div class="form-row" id="tmTitleRow" style="display:none">
+        <label>Title *</label><input type="text" id="tmTitle">
+      </div>
+      <div class="form-row"><label>Name *</label><input type="text" id="tmName" required></div>
+      <div class="form-row-2">
+        <div class="form-row"><label>Email</label><input type="email" id="tmEmail"></div>
+        <div class="form-row"><label>Phone</label><input type="text" id="tmPhone"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save</button>
+      </div>
+    </form>
   </div>
 
   <script src="/static/purify.min.js"></script>

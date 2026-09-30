@@ -5,6 +5,16 @@
   <p class="empty-state">Loading…</p>
 </div>
 
+<div id="companyTeamSection" style="display:none">
+  <div class="card">
+    <div class="section-header">
+      <div class="card-title" style="margin:0">Account Team</div>
+      <button class="btn btn-primary btn-sm" onclick="openAddTeamMember(_currentCompany.id, refreshCompanyTeam)">+ Add Member</button>
+    </div>
+    <div id="companyTeamList"></div>
+  </div>
+</div>
+
 <div id="companyNotesSection" style="display:none">
   <div class="card">
     <div class="section-header">
@@ -116,6 +126,7 @@
 {% block scripts %}
 <script>
   initCompanyDetail({{ company_id }});
+  document.getElementById('companyTeamSection').style.display = '';
   document.getElementById('companyNotesSection').style.display = '';
   document.getElementById('companyTimelineSection').style.display = '';
   document.getElementById('companyContactsSection').style.display = '';

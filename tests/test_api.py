@@ -70,18 +70,19 @@ def _make_contact(client, fname='Test', lname='User'):
 def test_create_interaction(client):
     cid = _make_contact(client)
     r = client.post('/api/interactions', json={
-        'contact_id': cid, 'type': 'call',
+        'contact_ids': [cid], 'type': 'call',
         'summary': 'Quick check-in', 'interaction_date': '2026-05-28'
     })
     assert r.status_code == 201
     data = r.get_json()
     assert data['type'] == 'call'
-    assert data['contact_id'] == cid
+    assert [c['id'] for c in data['contacts']] == [cid]
+    assert 'contact_id' not in data
 
 def test_list_interactions(client):
     cid = _make_contact(client)
-    client.post('/api/interactions', json={'contact_id': cid, 'type': 'email', 'summary': 'Follow up', 'interaction_date': '2026-05-27'})
-    client.post('/api/interactions', json={'contact_id': cid, 'type': 'meeting', 'summary': 'Demo call', 'interaction_date': '2026-05-28'})
+    client.post('/api/interactions', json={'contact_ids': [cid], 'type': 'email', 'summary': 'Follow up', 'interaction_date': '2026-05-27'})
+    client.post('/api/interactions', json={'contact_ids': [cid], 'type': 'meeting', 'summary': 'Demo call', 'interaction_date': '2026-05-28'})
     r = client.get(f'/api/contacts/{cid}/interactions')
     data = r.get_json()
     assert len(data) == 2
@@ -89,7 +90,7 @@ def test_list_interactions(client):
 
 def test_delete_interaction(client):
     cid = _make_contact(client)
-    r = client.post('/api/interactions', json={'contact_id': cid, 'type': 'note', 'summary': 'Note', 'interaction_date': '2026-05-28'})
+    r = client.post('/api/interactions', json={'contact_ids': [cid], 'type': 'note', 'summary': 'Note', 'interaction_date': '2026-05-28'})
     iid = r.get_json()['id']
     client.delete(f'/api/interactions/{iid}')
     r2 = client.get(f'/api/contacts/{cid}/interactions')
@@ -98,11 +99,11 @@ def test_delete_interaction(client):
 def test_update_interaction(client):
     cid = _make_contact(client)
     r = client.post('/api/interactions', json={
-        'contact_id': cid, 'type': 'call', 'summary': 'Hi', 'interaction_date': '2026-05-28'
+        'contact_ids': [cid], 'type': 'call', 'summary': 'Hi', 'interaction_date': '2026-05-28'
     })
     iid = r.get_json()['id']
     r2 = client.put(f'/api/interactions/{iid}', json={
-        'type': 'email', 'summary': 'Updated', 'interaction_date': '2026-05-29'
+        'contact_ids': [cid], 'type': 'email', 'summary': 'Updated', 'interaction_date': '2026-05-29'
     })
     assert r2.status_code == 200
     d = r2.get_json()
@@ -114,24 +115,24 @@ def test_update_interaction(client):
 def test_update_interaction_invalid_type(client):
     cid = _make_contact(client)
     r = client.post('/api/interactions', json={
-        'contact_id': cid, 'type': 'call', 'summary': 'Hi', 'interaction_date': '2026-05-28'
+        'contact_ids': [cid], 'type': 'call', 'summary': 'Hi', 'interaction_date': '2026-05-28'
     })
     iid = r.get_json()['id']
     r2 = client.put(f'/api/interactions/{iid}', json={
-        'type': 'bogus', 'summary': 'x', 'interaction_date': '2026-05-28'
+        'contact_ids': [cid], 'type': 'bogus', 'summary': 'x', 'interaction_date': '2026-05-28'
     })
     assert r2.status_code == 400
 
 def test_update_interaction_not_found(client):
     r = client.put('/api/interactions/999', json={
-        'type': 'call', 'summary': 'x', 'interaction_date': '2026-05-28'
+        'contact_ids': [1], 'type': 'call', 'summary': 'x', 'interaction_date': '2026-05-28'
     })
     assert r.status_code == 404
 
 
 def test_delete_cascades(client):
     cid = _make_contact(client)
-    client.post('/api/interactions', json={'contact_id': cid, 'type': 'call', 'summary': 'X', 'interaction_date': '2026-05-28'})
+    client.post('/api/interactions', json={'contact_ids': [cid], 'type': 'call', 'summary': 'X', 'interaction_date': '2026-05-28'})
     r_del = client.delete(f'/api/contacts/{cid}')
     assert r_del.status_code == 200
     assert r_del.get_json()['ok'] is True
@@ -141,7 +142,7 @@ def test_delete_cascades(client):
 
 def test_dashboard_stats(client):
     cid = _make_contact(client)
-    client.post('/api/interactions', json={'contact_id': cid, 'type': 'call', 'summary': 'Hi', 'interaction_date': '2026-05-28'})
+    client.post('/api/interactions', json={'contact_ids': [cid], 'type': 'call', 'summary': 'Hi', 'interaction_date': '2026-05-28'})
     r = client.get('/api/dashboard')
     d = r.get_json()
     assert d['total_contacts'] == 1
@@ -766,3 +767,119 @@ def test_account_teams_overview(client):
 def test_account_teams_page_renders(client):
     r = client.get('/account-teams')
     assert r.status_code == 200
+
+
+# ── Multi-contact interactions ───────────────────────────────────────────────
+
+def _log(client, cids, **kw):
+    body = {'contact_ids': cids, 'type': 'email', 'summary': 'Group email',
+            'interaction_date': '2026-05-28'}
+    body.update(kw)
+    return client.post('/api/interactions', json=body)
+
+
+def test_interaction_multiple_contacts(client):
+    a = _make_contact(client, 'Zed', 'Adams')
+    b = _make_contact(client, 'Amy', 'Brown')
+    r = _log(client, [b, a])
+    assert r.status_code == 201
+    # sorted by last name then first name
+    assert [c['id'] for c in r.get_json()['contacts']] == [a, b]
+    assert set(r.get_json()['contacts'][0]) == {'id', 'first_name', 'last_name'}
+    for cid in (a, b):
+        items = client.get(f'/api/contacts/{cid}/interactions').get_json()
+        assert len(items) == 1
+        assert [c['id'] for c in items[0]['contacts']] == [a, b]
+
+
+def test_interaction_contact_ids_validation(client):
+    cid = _make_contact(client)
+    assert _log(client, []).status_code == 400
+    assert _log(client, 'nope').status_code == 400
+    assert _log(client, None).status_code == 400
+    assert _log(client, [cid, 999]).status_code == 400
+    assert _log(client, ['x']).status_code == 400
+    r = _log(client, [cid, cid])
+    assert r.status_code == 201
+    assert len(r.get_json()['contacts']) == 1
+
+
+def test_update_interaction_replaces_participants(client):
+    a = _make_contact(client, 'A', 'One')
+    b = _make_contact(client, 'B', 'Two')
+    c = _make_contact(client, 'C', 'Three')
+    iid = _log(client, [a, b]).get_json()['id']
+    r = client.put(f'/api/interactions/{iid}', json={
+        'contact_ids': [b, c], 'type': 'call', 'summary': 'Edited',
+        'interaction_date': '2026-05-29'})
+    assert r.status_code == 200
+    assert sorted(x['id'] for x in r.get_json()['contacts']) == sorted([b, c])
+    assert client.get(f'/api/contacts/{a}/interactions').get_json() == []
+    assert len(client.get(f'/api/contacts/{c}/interactions').get_json()) == 1
+    # empty / unknown participants rejected, existing set untouched
+    bad = client.put(f'/api/interactions/{iid}', json={
+        'contact_ids': [], 'type': 'call', 'summary': 'x', 'interaction_date': '2026-05-29'})
+    assert bad.status_code == 400
+    bad2 = client.put(f'/api/interactions/{iid}', json={
+        'contact_ids': [999], 'type': 'call', 'summary': 'x', 'interaction_date': '2026-05-29'})
+    assert bad2.status_code == 400
+    assert len(client.get(f'/api/contacts/{b}/interactions').get_json()) == 1
+
+
+def test_delete_contact_keeps_shared_interaction(client):
+    a = _make_contact(client, 'A', 'One')
+    b = _make_contact(client, 'B', 'Two')
+    _log(client, [a, b])
+    client.delete(f'/api/contacts/{a}')
+    items = client.get(f'/api/contacts/{b}/interactions').get_json()
+    assert len(items) == 1
+    assert [c['id'] for c in items[0]['contacts']] == [b]
+    client.delete(f'/api/contacts/{b}')
+    import sqlite3
+    conn = sqlite3.connect(ccrm_app.DB_PATH)
+    assert conn.execute('SELECT COUNT(*) FROM interactions').fetchone()[0] == 0
+    conn.close()
+
+
+def test_dashboard_recent_interactions_include_contacts(client):
+    a = _make_contact(client, 'A', 'One')
+    b = _make_contact(client, 'B', 'Two')
+    _log(client, [a, b])
+    d = client.get('/api/dashboard').get_json()
+    assert len(d['recent_interactions']) == 1
+    assert sorted(c['id'] for c in d['recent_interactions'][0]['contacts']) == sorted([a, b])
+
+
+def test_migrate_legacy_interactions(tmp_path):
+    import sqlite3
+    db_file = tmp_path / 'legacy.db'
+    conn = sqlite3.connect(db_file)
+    conn.executescript('''
+        CREATE TABLE contacts (id INTEGER PRIMARY KEY AUTOINCREMENT, first_name TEXT NOT NULL,
+            last_name TEXT NOT NULL, company TEXT DEFAULT '', title TEXT DEFAULT '',
+            email TEXT DEFAULT '', phone TEXT DEFAULT '', notes TEXT DEFAULT '',
+            created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+        CREATE TABLE interactions (id INTEGER PRIMARY KEY AUTOINCREMENT,
+            contact_id INTEGER NOT NULL REFERENCES contacts(id) ON DELETE CASCADE,
+            type TEXT NOT NULL CHECK(type IN ('call','email','meeting','note')),
+            summary TEXT NOT NULL, interaction_date TEXT NOT NULL, created_at TEXT NOT NULL);
+        INSERT INTO contacts (first_name,last_name,created_at,updated_at) VALUES ('Old','Timer','t','t');
+        INSERT INTO interactions (contact_id,type,summary,interaction_date,created_at)
+            VALUES (1,'call','Legacy call','2026-01-02','t');
+    ''')
+    conn.commit()
+    conn.close()
+    ccrm_app.DB_PATH = str(db_file)
+    ccrm_app.migrate_db()
+    ccrm_app.migrate_db()  # idempotent
+    conn = sqlite3.connect(db_file)
+    cols = {r[1] for r in conn.execute('PRAGMA table_info(interactions)')}
+    assert 'contact_id' not in cols
+    assert conn.execute('SELECT interaction_id, contact_id FROM interaction_contacts').fetchall() == [(1, 1)]
+    assert conn.execute('SELECT summary FROM interactions').fetchone()[0] == 'Legacy call'
+    conn.close()
+    ccrm_app.app.config['TESTING'] = True
+    with ccrm_app.app.test_client() as c:
+        items = c.get('/api/contacts/1/interactions').get_json()
+        assert items[0]['summary'] == 'Legacy call'
+        assert items[0]['contacts'][0]['last_name'] == 'Timer'

@@ -852,34 +852,38 @@ def test_dashboard_recent_interactions_include_contacts(client):
 
 def test_migrate_legacy_interactions(tmp_path):
     import sqlite3
-    db_file = tmp_path / 'legacy.db'
-    conn = sqlite3.connect(db_file)
-    conn.executescript('''
-        CREATE TABLE contacts (id INTEGER PRIMARY KEY AUTOINCREMENT, first_name TEXT NOT NULL,
-            last_name TEXT NOT NULL, company TEXT DEFAULT '', title TEXT DEFAULT '',
-            email TEXT DEFAULT '', phone TEXT DEFAULT '', notes TEXT DEFAULT '',
-            created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
-        CREATE TABLE interactions (id INTEGER PRIMARY KEY AUTOINCREMENT,
-            contact_id INTEGER NOT NULL REFERENCES contacts(id) ON DELETE CASCADE,
-            type TEXT NOT NULL CHECK(type IN ('call','email','meeting','note')),
-            summary TEXT NOT NULL, interaction_date TEXT NOT NULL, created_at TEXT NOT NULL);
-        INSERT INTO contacts (first_name,last_name,created_at,updated_at) VALUES ('Old','Timer','t','t');
-        INSERT INTO interactions (contact_id,type,summary,interaction_date,created_at)
-            VALUES (1,'call','Legacy call','2026-01-02','t');
-    ''')
-    conn.commit()
-    conn.close()
-    ccrm_app.DB_PATH = str(db_file)
-    ccrm_app.migrate_db()
-    ccrm_app.migrate_db()  # idempotent
-    conn = sqlite3.connect(db_file)
-    cols = {r[1] for r in conn.execute('PRAGMA table_info(interactions)')}
-    assert 'contact_id' not in cols
-    assert conn.execute('SELECT interaction_id, contact_id FROM interaction_contacts').fetchall() == [(1, 1)]
-    assert conn.execute('SELECT summary FROM interactions').fetchone()[0] == 'Legacy call'
-    conn.close()
-    ccrm_app.app.config['TESTING'] = True
-    with ccrm_app.app.test_client() as c:
-        items = c.get('/api/contacts/1/interactions').get_json()
-        assert items[0]['summary'] == 'Legacy call'
-        assert items[0]['contacts'][0]['last_name'] == 'Timer'
+    orig = ccrm_app.DB_PATH
+    try:
+        db_file = tmp_path / 'legacy.db'
+        conn = sqlite3.connect(db_file)
+        conn.executescript('''
+            CREATE TABLE contacts (id INTEGER PRIMARY KEY AUTOINCREMENT, first_name TEXT NOT NULL,
+                last_name TEXT NOT NULL, company TEXT DEFAULT '', title TEXT DEFAULT '',
+                email TEXT DEFAULT '', phone TEXT DEFAULT '', notes TEXT DEFAULT '',
+                created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+            CREATE TABLE interactions (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                contact_id INTEGER NOT NULL REFERENCES contacts(id) ON DELETE CASCADE,
+                type TEXT NOT NULL CHECK(type IN ('call','email','meeting','note')),
+                summary TEXT NOT NULL, interaction_date TEXT NOT NULL, created_at TEXT NOT NULL);
+            INSERT INTO contacts (first_name,last_name,created_at,updated_at) VALUES ('Old','Timer','t','t');
+            INSERT INTO interactions (contact_id,type,summary,interaction_date,created_at)
+                VALUES (1,'call','Legacy call','2026-01-02','t');
+        ''')
+        conn.commit()
+        conn.close()
+        ccrm_app.DB_PATH = str(db_file)
+        ccrm_app.migrate_db()
+        ccrm_app.migrate_db()  # idempotent
+        conn = sqlite3.connect(db_file)
+        cols = {r[1] for r in conn.execute('PRAGMA table_info(interactions)')}
+        assert 'contact_id' not in cols
+        assert conn.execute('SELECT interaction_id, contact_id FROM interaction_contacts').fetchall() == [(1, 1)]
+        assert conn.execute('SELECT summary FROM interactions').fetchone()[0] == 'Legacy call'
+        conn.close()
+        ccrm_app.app.config['TESTING'] = True
+        with ccrm_app.app.test_client() as c:
+            items = c.get('/api/contacts/1/interactions').get_json()
+            assert items[0]['summary'] == 'Legacy call'
+            assert items[0]['contacts'][0]['last_name'] == 'Timer'
+    finally:
+        ccrm_app.DB_PATH = orig

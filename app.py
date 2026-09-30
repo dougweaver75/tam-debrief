@@ -87,6 +87,7 @@ def migrate_db():
         )
         db.commit()
         db.executescript('''
+            BEGIN;
             CREATE TABLE interactions_new (
                 id               INTEGER PRIMARY KEY AUTOINCREMENT,
                 type             TEXT    NOT NULL CHECK(type IN ('call','email','meeting','note')),
@@ -99,6 +100,7 @@ def migrate_db():
                 SELECT id,type,summary,interaction_date,created_at,updated_at FROM interactions;
             DROP TABLE interactions;
             ALTER TABLE interactions_new RENAME TO interactions;
+            COMMIT;
         ''')
     db.commit()
     db.close()

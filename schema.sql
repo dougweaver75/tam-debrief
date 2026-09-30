@@ -13,12 +13,17 @@ CREATE TABLE IF NOT EXISTS contacts (
 
 CREATE TABLE IF NOT EXISTS interactions (
     id               INTEGER PRIMARY KEY AUTOINCREMENT,
-    contact_id       INTEGER NOT NULL REFERENCES contacts(id) ON DELETE CASCADE,
     type             TEXT    NOT NULL CHECK(type IN ('call','email','meeting','note')),
     summary          TEXT    NOT NULL,
     interaction_date TEXT    NOT NULL,
     created_at       TEXT    NOT NULL,
     updated_at       TEXT
+);
+
+CREATE TABLE IF NOT EXISTS interaction_contacts (
+    interaction_id INTEGER NOT NULL REFERENCES interactions(id) ON DELETE CASCADE,
+    contact_id     INTEGER NOT NULL REFERENCES contacts(id)     ON DELETE CASCADE,
+    PRIMARY KEY (interaction_id, contact_id)
 );
 
 CREATE TABLE IF NOT EXISTS deals (

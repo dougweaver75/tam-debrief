@@ -77,6 +77,31 @@ def migrate_db():
     cols_int = {r[1] for r in db.execute("PRAGMA table_info(interactions)")}
     if 'updated_at' not in cols_int:
         db.execute("ALTER TABLE interactions ADD COLUMN updated_at TEXT")
+    cols_int = {r[1] for r in db.execute("PRAGMA table_info(interactions)")}
+    if 'contact_id' in cols_int:
+        # One-time: move the single contact link into interaction_contacts and
+        # rebuild interactions without contact_id (SQLite can't drop a NOT NULL FK column).
+        db.execute(
+            'INSERT OR IGNORE INTO interaction_contacts (interaction_id, contact_id) '
+            'SELECT id, contact_id FROM interactions'
+        )
+        db.commit()
+        db.executescript('''
+            BEGIN;
+            CREATE TABLE interactions_new (
+                id               INTEGER PRIMARY KEY AUTOINCREMENT,
+                type             TEXT    NOT NULL CHECK(type IN ('call','email','meeting','note')),
+                summary          TEXT    NOT NULL,
+                interaction_date TEXT    NOT NULL,
+                created_at       TEXT    NOT NULL,
+                updated_at       TEXT
+            );
+            INSERT INTO interactions_new (id,type,summary,interaction_date,created_at,updated_at)
+                SELECT id,type,summary,interaction_date,created_at,updated_at FROM interactions;
+            DROP TABLE interactions;
+            ALTER TABLE interactions_new RENAME TO interactions;
+            COMMIT;
+        ''')
     db.commit()
     db.close()
 
@@ -214,6 +239,8 @@ def api_delete_contact(cid):
     cur = execute('DELETE FROM contacts WHERE id=?', (cid,))
     if cur.rowcount == 0:
         return jsonify({'error': 'Not found'}), 404
+    # Interactions whose last participant was just deleted are now unreachable.
+    execute('DELETE FROM interactions WHERE id NOT IN (SELECT interaction_id FROM interaction_contacts)')
     return jsonify({'ok': True})
 
 
@@ -245,34 +272,95 @@ def api_contact_action_items(cid):
     return jsonify(as_list(rows))
 
 
+INTERACTION_TYPES = ('call', 'email', 'meeting', 'note')
+
+def attach_contacts(interactions):
+    """Add a 'contacts' list [{id, first_name, last_name}] to each interaction dict."""
+    for i in interactions:
+        i['contacts'] = []
+    if not interactions:
+        return interactions
+    by_id = {i['id']: i for i in interactions}
+    marks = ','.join('?' * len(by_id))
+    rows = query(
+        'SELECT ic.interaction_id, c.id, c.first_name, c.last_name '
+        'FROM interaction_contacts ic JOIN contacts c ON c.id = ic.contact_id '
+        f'WHERE ic.interaction_id IN ({marks}) '
+        'ORDER BY c.last_name COLLATE NOCASE, c.first_name COLLATE NOCASE, c.id',
+        list(by_id)
+    )
+    for r in rows:
+        by_id[r['interaction_id']]['contacts'].append(
+            {'id': r['id'], 'first_name': r['first_name'], 'last_name': r['last_name']})
+    return interactions
+
+
+def get_interaction(iid):
+    row = query('SELECT * FROM interactions WHERE id=?', (iid,), one=True)
+    return attach_contacts([as_dict(row)])[0] if row else None
+
+
+def _parse_contact_ids(data):
+    """Return (deduped id list, error). Every id must be an existing contact."""
+    ids = data.get('contact_ids')
+    if not isinstance(ids, list) or not ids:
+        return None, 'contact_ids must be a non-empty list'
+    if not all(isinstance(x, int) and not isinstance(x, bool) for x in ids):
+        return None, 'contact_ids must be integers'
+    ids = list(dict.fromkeys(ids))
+    marks = ','.join('?' * len(ids))
+    found = query(f'SELECT id FROM contacts WHERE id IN ({marks})', ids)
+    if len(found) != len(ids):
+        return None, 'unknown contact in contact_ids'
+    return ids, None
+
+
+def _interaction_fields(data):
+    itype   = data.get('type', '')
+    summary = (data.get('summary') or '').strip()
+    idate   = data.get('interaction_date', '')
+    if not summary or not idate:
+        return None, 'summary and interaction_date are required'
+    if itype not in INTERACTION_TYPES:
+        return None, 'type must be call, email, meeting, or note'
+    return (itype, summary, idate), None
+
+
+def _set_participants(iid, contact_ids):
+    db = get_db()
+    db.execute('DELETE FROM interaction_contacts WHERE interaction_id=?', (iid,))
+    db.executemany('INSERT INTO interaction_contacts (interaction_id, contact_id) VALUES (?,?)',
+                   [(iid, cid) for cid in contact_ids])
+    db.commit()
+
+
 @app.route('/api/contacts/<int:cid>/interactions', methods=['GET'])
 def api_list_interactions(cid):
     rows = query(
-        'SELECT * FROM interactions WHERE contact_id=? ORDER BY interaction_date DESC, created_at DESC',
+        'SELECT i.* FROM interactions i '
+        'JOIN interaction_contacts ic ON ic.interaction_id = i.id '
+        'WHERE ic.contact_id=? ORDER BY i.interaction_date DESC, i.created_at DESC, i.id DESC',
         (cid,)
     )
-    return jsonify(as_list(rows))
+    return jsonify(attach_contacts(as_list(rows)))
 
 
 @app.route('/api/interactions', methods=['POST'])
 def api_create_interaction():
     data = request.get_json(force=True) or {}
-    contact_id = data.get('contact_id')
-    itype      = data.get('type', '')
-    summary    = data.get('summary', '').strip()
-    idate      = data.get('interaction_date', '')
-    if not contact_id or not summary or not idate:
-        return jsonify({'error': 'contact_id, summary, and interaction_date are required'}), 400
-    if itype not in ('call', 'email', 'meeting', 'note'):
-        return jsonify({'error': 'type must be call, email, meeting, or note'}), 400
-    try:
-        cur = execute(
-            'INSERT INTO interactions (contact_id,type,summary,interaction_date,created_at) VALUES (?,?,?,?,?)',
-            (contact_id, itype, summary, idate, now_iso())
-        )
-    except sqlite3.IntegrityError as e:
-        return jsonify({'error': str(e)}), 400
-    return jsonify(as_dict(query('SELECT * FROM interactions WHERE id=?', (cur.lastrowid,), one=True))), 201
+    contact_ids, err = _parse_contact_ids(data)
+    if err:
+        return jsonify({'error': err}), 400
+    fields, err = _interaction_fields(data)
+    if err:
+        return jsonify({'error': err}), 400
+    itype, summary, idate = fields
+    cur = execute(
+        'INSERT INTO interactions (type,summary,interaction_date,created_at) VALUES (?,?,?,?)',
+        (itype, summary, idate, now_iso())
+    )
+    _set_participants(cur.lastrowid, contact_ids)
+    return jsonify(get_interaction(cur.lastrowid)), 201
 
 
 @app.route('/api/interactions/<int:iid>', methods=['DELETE'])
@@ -287,19 +375,20 @@ def api_delete_interaction(iid):
 def api_update_interaction(iid):
     if not query('SELECT id FROM interactions WHERE id=?', (iid,), one=True):
         return jsonify({'error': 'Not found'}), 404
-    data    = request.get_json(force=True) or {}
-    itype   = data.get('type', '')
-    summary = data.get('summary', '').strip()
-    idate   = data.get('interaction_date', '')
-    if not summary or not idate:
-        return jsonify({'error': 'summary and interaction_date are required'}), 400
-    if itype not in ('call', 'email', 'meeting', 'note'):
-        return jsonify({'error': 'type must be call, email, meeting, or note'}), 400
+    data = request.get_json(force=True) or {}
+    contact_ids, err = _parse_contact_ids(data)
+    if err:
+        return jsonify({'error': err}), 400
+    fields, err = _interaction_fields(data)
+    if err:
+        return jsonify({'error': err}), 400
+    itype, summary, idate = fields
     execute(
         'UPDATE interactions SET type=?,summary=?,interaction_date=?,updated_at=? WHERE id=?',
         (itype, summary, idate, now_iso(), iid)
     )
-    return jsonify(as_dict(query('SELECT * FROM interactions WHERE id=?', (iid,), one=True)))
+    _set_participants(iid, contact_ids)
+    return jsonify(get_interaction(iid))
 
 
 # ── API: companies ───────────────────────────────────────────────────────────
@@ -806,9 +895,8 @@ def api_dashboard():
         'SELECT COUNT(*) AS n FROM action_items WHERE completed=0', one=True
     )['n']
     recent  = query(
-        'SELECT i.*, c.first_name, c.last_name FROM interactions i '
-        'JOIN contacts c ON c.id=i.contact_id '
-        'ORDER BY i.interaction_date DESC, i.created_at DESC LIMIT 10'
+        'SELECT * FROM interactions '
+        'ORDER BY interaction_date DESC, created_at DESC, id DESC LIMIT 10'
     )
     action_items = query(
         'SELECT a.*, c.first_name, c.last_name, m.title AS meeting_title '
@@ -915,7 +1003,7 @@ def api_dashboard():
         'total_contacts':       total,
         'total_meetings':       meetings,
         'open_action_items':    open_ai,
-        'recent_interactions':  as_list(recent),
+        'recent_interactions':  attach_contacts(as_list(recent)),
         'action_items':         as_list(action_items),
         'companies':            as_list(companies),
         'recent_activity':      recent_activity,

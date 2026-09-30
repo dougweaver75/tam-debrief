@@ -479,6 +479,13 @@ function renderInteractions(interactions) {
           <span class="interaction-date">${fmtDate(i.interaction_date)}</span>
         </div>
         <div class="interaction-summary">${esc(i.summary)}</div>
+        ${(() => {
+          const others = i.contacts.filter(c => c.id !== _currentContact.id);
+          return others.length
+            ? `<div class="interaction-summary" style="color:var(--text-muted)">With: ${others.map(c =>
+                `<a href="/contacts/${c.id}" class="table-link">${esc(contactLabel(c))}</a>`).join(', ')}</div>`
+            : '';
+        })()}
       </div>
       <div style="display:flex;gap:6px">
         <button class="btn btn-secondary btn-sm" onclick="openEditInteraction(${i.id})">Edit</button>
@@ -488,11 +495,51 @@ function renderInteractions(interactions) {
   `).join('');
 }
 
-function openLogInteraction() {
+let _iParticipants = [];   // [{id, name}]
+let _allContacts = [];
+
+function contactLabel(c) { return `${c.first_name} ${c.last_name}`.trim(); }
+
+function renderInteractionChips() {
+  document.getElementById('iChips').innerHTML = _iParticipants.map(p => `
+    <span class="chip">${esc(p.name)}
+      ${_iParticipants.length > 1
+        ? `<button type="button" onclick="removeInteractionContact(${p.id})" title="Remove">&times;</button>`
+        : ''}
+    </span>`).join('');
+  const taken = new Set(_iParticipants.map(p => p.id));
+  const sel = document.getElementById('iAddContact');
+  sel.innerHTML = '<option value="">Add another contact…</option>' +
+    _allContacts.filter(c => !taken.has(c.id))
+      .map(c => `<option value="${c.id}">${esc(c.last_name)}, ${esc(c.first_name)}</option>`).join('');
+}
+
+function addInteractionContact() {
+  const sel = document.getElementById('iAddContact');
+  const id = parseInt(sel.value, 10);
+  const c = _allContacts.find(x => x.id === id);
+  if (c) _iParticipants.push({ id: c.id, name: contactLabel(c) });
+  renderInteractionChips();
+}
+
+function removeInteractionContact(id) {
+  if (_iParticipants.length <= 1) return;
+  _iParticipants = _iParticipants.filter(p => p.id !== id);
+  renderInteractionChips();
+}
+
+async function loadAllContacts() {
+  try { _allContacts = await API.get('/api/contacts'); } catch (e) { _allContacts = []; }
+}
+
+async function openLogInteraction() {
   document.getElementById('interactionModalTitle').textContent = 'Log Interaction';
   document.getElementById('iId').value = '';
   document.getElementById('interactionForm').reset();
   document.getElementById('iDate').value = new Date().toISOString().slice(0,10);
+  await loadAllContacts();
+  _iParticipants = [{ id: _currentContact.id, name: contactLabel(_currentContact) }];
+  renderInteractionChips();
   openModal('interactionModal');
 }
 
@@ -501,11 +548,14 @@ async function openEditInteraction(id) {
     const interactions = await API.get(`/api/contacts/${_currentContact.id}/interactions`);
     const i = interactions.find(x => x.id === id);
     if (!i) return;
+    await loadAllContacts();
     document.getElementById('interactionModalTitle').textContent = 'Edit Interaction';
     document.getElementById('iId').value = i.id;
     document.getElementById('iType').value = i.type;
     document.getElementById('iDate').value = i.interaction_date;
     document.getElementById('iSummary').value = i.summary;
+    _iParticipants = i.contacts.map(c => ({ id: c.id, name: contactLabel(c) }));
+    renderInteractionChips();
     openModal('interactionModal');
   } catch (e) { showToast('Failed to load interaction.'); }
 }
@@ -517,13 +567,13 @@ async function submitInteraction(e) {
     type:             document.getElementById('iType').value,
     summary:          document.getElementById('iSummary').value.trim(),
     interaction_date: document.getElementById('iDate').value,
+    contact_ids:      _iParticipants.map(p => p.id),
   };
   try {
     if (id) {
       await API.put(`/api/interactions/${id}`, data);
       showToast('Interaction updated.');
     } else {
-      data.contact_id = _currentContact.id;
       await API.post('/api/interactions', data);
       showToast('Interaction logged.');
     }
@@ -1701,6 +1751,40 @@ function initAccountTeams() {
 
 // ── Dashboard ──────────────────────────────────────────────────────────────
 
+const DASH_LIMIT = 5;
+
+function renderDashActivityItem(i) {
+  return `
+    <div class="interaction-item">
+      <div style="flex:1">
+        <div style="display:flex;align-items:center;gap:8px">
+          ${i.category ? badgeHtml(i.category, TIMELINE_CATEGORY_LABELS[i.category] || i.category)
+                        : badgeHtml(i.source, TIMELINE_SOURCE_LABELS[i.source] || i.source)}
+          <a href="${i.link}" class="table-link">${esc(i.company_name)}</a>
+          <span class="interaction-date">${fmtDate(i.date)}</span>
+        </div>
+        <div class="interaction-summary">${esc(i.title)}</div>
+      </div>
+    </div>`;
+}
+
+// Shows the first DASH_LIMIT items with a Show more / Show less toggle.
+function renderExpandableList(el, items, emptyHtml) {
+  if (!items.length) { el.innerHTML = emptyHtml; return; }
+  let expanded = false;
+  const draw = () => {
+    const shown = expanded ? items : items.slice(0, DASH_LIMIT);
+    const extra = items.length - DASH_LIMIT;
+    el.innerHTML = shown.map(renderDashActivityItem).join('') +
+      (extra > 0
+        ? `<button type="button" class="btn btn-secondary btn-sm dash-more" style="margin-top:8px">${expanded ? 'Show less' : `Show ${extra} more`}</button>`
+        : '');
+    const btn = el.querySelector('.dash-more');
+    if (btn) btn.onclick = () => { expanded = !expanded; draw(); };
+  };
+  draw();
+}
+
 function initDashboard() {
   loadDashboard();
 }
@@ -1773,7 +1857,7 @@ function renderDashboard(data) {
         <div style="flex:1">
           <div style="display:flex;align-items:center;gap:8px">
             ${badgeHtml(i.type, TYPE_LABELS[i.type] || i.type)}
-            <a href="/contacts/${i.contact_id}" class="table-link">${esc(i.first_name)} ${esc(i.last_name)}</a>
+            ${i.contacts.map(c => `<a href="/contacts/${c.id}" class="table-link">${esc(contactLabel(c))}</a>`).join(', ')}
             <span class="interaction-date">${fmtDate(i.interaction_date)}</span>
           </div>
           <div class="interaction-summary">${esc(i.summary)}</div>
@@ -1783,40 +1867,8 @@ function renderDashboard(data) {
   }
 
   const raEl = document.getElementById('dashRecentActivity');
-  if (raEl) {
-    const items = data.recent_activity || [];
-    raEl.innerHTML = items.length
-      ? items.map(i => `
-        <div class="interaction-item">
-          <div style="flex:1">
-            <div style="display:flex;align-items:center;gap:8px">
-              ${i.category ? badgeHtml(i.category, TIMELINE_CATEGORY_LABELS[i.category] || i.category)
-                            : badgeHtml(i.source, TIMELINE_SOURCE_LABELS[i.source] || i.source)}
-              <a href="${i.link}" class="table-link">${esc(i.company_name)}</a>
-              <span class="interaction-date">${fmtDate(i.date)}</span>
-            </div>
-            <div class="interaction-summary">${esc(i.title)}</div>
-          </div>
-        </div>`).join('')
-      : '<p class="empty-state">No recent activity.</p>';
-  }
+  if (raEl) renderExpandableList(raEl, data.recent_activity || [], '<p class="empty-state">No recent activity.</p>');
 
   const upEl = document.getElementById('dashUpcoming');
-  if (upEl) {
-    const items = data.upcoming || [];
-    upEl.innerHTML = items.length
-      ? items.map(i => `
-        <div class="interaction-item">
-          <div style="flex:1">
-            <div style="display:flex;align-items:center;gap:8px">
-              ${i.category ? badgeHtml(i.category, TIMELINE_CATEGORY_LABELS[i.category] || i.category)
-                            : badgeHtml(i.source, TIMELINE_SOURCE_LABELS[i.source] || i.source)}
-              <a href="${i.link}" class="table-link">${esc(i.company_name)}</a>
-              <span class="interaction-date">${fmtDate(i.date)}</span>
-            </div>
-            <div class="interaction-summary">${esc(i.title)}</div>
-          </div>
-        </div>`).join('')
-      : '<p class="empty-state">Nothing upcoming.</p>';
-  }
+  if (upEl) renderExpandableList(upEl, data.upcoming || [], '<p class="empty-state">Nothing upcoming.</p>');
 }

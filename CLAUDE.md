@@ -40,6 +40,7 @@ python -m pytest tests/ -v
 - Company and contact detail pages cross-link associated meetings and action items via `/api/contacts/<id>/meetings`, `/api/contacts/<id>/action-items`, `/api/companies/<id>/meetings`, `/api/companies/<id>/action-items`
 - **Account teams**: internal team per company (`account_team_members` table). Managed on the company page and at `/account-teams`; both share one add/edit modal (`teamMemberModal` in `base.html`) and `renderTeamRows` in `app.js`. Role `other` requires a `custom_title`.
 - **Interactions** can involve multiple contacts (`interaction_contacts` join table; `interactions` has no `contact_id`). API takes `contact_ids` and returns a `contacts` array. Logged/edited from the contact page modal. Deleting a contact removes interactions left with no participants.
+- **Meeting attendees** are contacts (`meeting_attendees`) plus, optionally, the meeting company's account team members (`meeting_team_attendees`, API `/api/meetings/<id>/team-attendees`). Team attendees are dropped if the meeting's company changes. Action-item assignment and Redact remain contact-only.
 - Redact page (`/sanitize`) includes a "Copy Prompt" button that prepends the full LLM prompt template to the sanitized notes for clipboard. The LLM response textarea is cleared on each new prompt copy to prevent stale content from being saved
 
 ## Future Features (Backlog)

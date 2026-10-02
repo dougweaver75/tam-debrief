@@ -838,6 +838,8 @@ async function saveMeetingEdit() {
     const updated = await API.put(`/api/meetings/${_currentMeeting.id}`, data);
     _currentMeeting = updated;
     renderMeetingDetail(updated, false);
+    const attendees = await API.get(`/api/meetings/${updated.id}/attendees`);
+    await renderAttendeesWithDropdown(updated.id, attendees);
     showToast('Meeting saved.');
   } catch (e) {
     showToast('Save failed.');
@@ -846,24 +848,40 @@ async function saveMeetingEdit() {
 }
 
 async function renderAttendeesWithDropdown(meetingId, attendees) {
+  let teamAttendees = [];
+  let companyTeam = [];
+  try {
+    teamAttendees = await API.get(`/api/meetings/${meetingId}/team-attendees`);
+    if (_currentMeeting && _currentMeeting.company_id) {
+      companyTeam = await API.get(`/api/companies/${_currentMeeting.company_id}/team`);
+    }
+  } catch (e) {}
+
   const attending_ids = new Set(attendees.map(a => a.id));
+  const attendingTeam = new Set(teamAttendees.map(t => t.id));
   try {
     const all = await API.get('/api/contacts');
     const available = all.filter(c => !attending_ids.has(c.id));
+    const teamAvail = companyTeam.filter(t => !attendingTeam.has(t.id));
     const sel = document.getElementById('attendeeSelect');
     if (sel) {
       sel.innerHTML = '<option value="">— Add attendee —</option>' +
-        available.map(c => `<option value="${c.id}">${esc(c.last_name)}, ${esc(c.first_name)}</option>`).join('');
+        available.map(c => `<option value="c:${c.id}">${esc(c.last_name)}, ${esc(c.first_name)}</option>`).join('') +
+        (teamAvail.length
+          ? `<optgroup label="Account Team — ${esc(_currentMeeting.company_name || 'Company')}">` +
+            teamAvail.map(t => `<option value="t:${t.id}">${esc(t.name)} — ${esc(teamRoleLabel(t))}</option>`).join('') +
+            '</optgroup>'
+          : '');
     }
   } catch (e) {}
 
   const el = document.getElementById('attendeesList');
   if (!el) return;
-  if (!attendees.length) {
+  if (!attendees.length && !teamAttendees.length) {
     el.innerHTML = '<p class="empty-state">No attendees yet.</p>';
     return;
   }
-  el.innerHTML = attendees.map(c => `
+  const contactRows = attendees.map(c => `
     <div class="interaction-item">
       <div style="flex:1">
         <a href="/contacts/${c.id}" class="table-link">${esc(c.last_name)}, ${esc(c.first_name)}</a>
@@ -872,18 +890,46 @@ async function renderAttendeesWithDropdown(meetingId, attendees) {
       <button class="btn btn-danger btn-sm" onclick="removeAttendee(${c.id})" title="Remove">${icon('close')}</button>
     </div>
   `).join('');
+  const teamRows = teamAttendees.map(t => `
+    <div class="interaction-item">
+      <div style="flex:1">
+        ${esc(t.name)}
+        ${badgeHtml('other', 'Account Team')}
+        <span style="color:var(--text-muted);margin-left:8px">${esc(teamRoleLabel(t))}</span>
+      </div>
+      <button class="btn btn-danger btn-sm" onclick="removeTeamAttendee(${t.id})" title="Remove">${icon('close')}</button>
+    </div>
+  `).join('');
+  el.innerHTML = contactRows + teamRows;
 }
 
 async function addAttendee() {
   const sel = document.getElementById('attendeeSelect');
-  const contact_id = sel?.value;
-  if (!contact_id) return;
+  const val = sel?.value;
+  if (!val) return;
+  const [kind, rawId] = val.split(':');
+  const id = parseInt(rawId, 10);
   try {
-    await API.post(`/api/meetings/${_currentMeeting.id}/attendees`, { contact_id: parseInt(contact_id) });
+    if (kind === 't') {
+      await API.post(`/api/meetings/${_currentMeeting.id}/team-attendees`, { team_member_id: id });
+    } else {
+      await API.post(`/api/meetings/${_currentMeeting.id}/attendees`, { contact_id: id });
+    }
     showToast('Attendee added.');
     const attendees = await API.get(`/api/meetings/${_currentMeeting.id}/attendees`);
     await renderAttendeesWithDropdown(_currentMeeting.id, attendees);
   } catch (e) { showToast('Failed to add attendee.'); }
+}
+
+function removeTeamAttendee(teamId) {
+  confirmDelete('Remove this attendee from the meeting?', async () => {
+    try {
+      await API.del(`/api/meetings/${_currentMeeting.id}/team-attendees/${teamId}`);
+      showToast('Attendee removed.');
+      const attendees = await API.get(`/api/meetings/${_currentMeeting.id}/attendees`);
+      await renderAttendeesWithDropdown(_currentMeeting.id, attendees);
+    } catch (e) { showToast('Failed to remove attendee.'); }
+  });
 }
 
 function openNewPersonModal() {

@@ -887,3 +887,101 @@ def test_migrate_legacy_interactions(tmp_path):
             assert items[0]['contacts'][0]['last_name'] == 'Timer'
     finally:
         ccrm_app.DB_PATH = orig
+
+
+# ── Team members as meeting attendees ────────────────────────────────────────
+
+def _meeting_for(client, coid, title='Co Meeting'):
+    r = client.post('/api/meetings', json={'title': title, 'meeting_date': '2026-06-01',
+                                           'company_id': coid})
+    return r.get_json()['id']
+
+
+def _team(client, coid, name='Pat Doe', role='account_executive', **kw):
+    body = {'role': role, 'name': name}
+    body.update(kw)
+    return client.post(f'/api/companies/{coid}/team', json=body).get_json()['id']
+
+
+def test_team_attendee_add_list_remove(client):
+    coid = _make_company(client)
+    mid = _meeting_for(client, coid)
+    t1 = _team(client, coid, 'Zed', 'solutions_consultant')
+    t2 = _team(client, coid, 'Amy', 'account_executive')
+    assert client.post(f'/api/meetings/{mid}/team-attendees', json={'team_member_id': t1}).status_code == 201
+    assert client.post(f'/api/meetings/{mid}/team-attendees', json={'team_member_id': t2}).status_code == 201
+    # idempotent
+    assert client.post(f'/api/meetings/{mid}/team-attendees', json={'team_member_id': t1}).status_code == 201
+    rows = client.get(f'/api/meetings/{mid}/team-attendees').get_json()
+    assert [r['id'] for r in rows] == [t2, t1]          # role order: AE before SC
+    assert rows[0]['name'] == 'Amy' and rows[0]['role'] == 'account_executive'
+    assert client.delete(f'/api/meetings/{mid}/team-attendees/{t1}').status_code == 200
+    assert [r['id'] for r in client.get(f'/api/meetings/{mid}/team-attendees').get_json()] == [t2]
+    assert client.delete(f'/api/meetings/{mid}/team-attendees/{t1}').status_code == 404
+
+
+def test_team_attendee_validation(client):
+    co1 = _make_company(client, 'One Co')
+    co2 = _make_company(client, 'Two Co')
+    mid = _meeting_for(client, co1)
+    other = _team(client, co2, 'Elsewhere')
+    mine = _team(client, co1, 'Here')
+    url = f'/api/meetings/{mid}/team-attendees'
+    assert client.post(url, json={'team_member_id': other}).status_code == 400   # wrong company
+    assert client.post(url, json={'team_member_id': 999}).status_code == 400     # unknown
+    assert client.post(url, json={'team_member_id': 'x'}).status_code == 400     # not an int
+    assert client.post(url, json={}).status_code == 400
+    assert client.post('/api/meetings/999/team-attendees', json={'team_member_id': mine}).status_code == 404
+    assert client.get('/api/meetings/999/team-attendees').status_code == 404
+    nocompany = _make_meeting(client)
+    assert client.post(f'/api/meetings/{nocompany}/team-attendees',
+                       json={'team_member_id': mine}).status_code == 400
+    assert client.get(url).get_json() == []
+
+
+def test_team_attendee_cascade_on_team_member_delete(client):
+    coid = _make_company(client)
+    mid = _meeting_for(client, coid)
+    t = _team(client, coid)
+    client.post(f'/api/meetings/{mid}/team-attendees', json={'team_member_id': t})
+    client.delete(f'/api/team/{t}')
+    assert client.get(f'/api/meetings/{mid}/team-attendees').get_json() == []
+
+
+def test_team_attendees_dropped_when_company_changes(client):
+    co1 = _make_company(client, 'One Co')
+    co2 = _make_company(client, 'Two Co')
+    mid = _meeting_for(client, co1)
+    t = _team(client, co1)
+    client.post(f'/api/meetings/{mid}/team-attendees', json={'team_member_id': t})
+    base = {'title': 'Co Meeting', 'meeting_date': '2026-06-01', 'notes': ''}
+    # same company: kept
+    client.put(f'/api/meetings/{mid}', json=dict(base, company_id=co1))
+    assert len(client.get(f'/api/meetings/{mid}/team-attendees').get_json()) == 1
+    # different company: dropped
+    client.put(f'/api/meetings/{mid}', json=dict(base, company_id=co2))
+    assert client.get(f'/api/meetings/{mid}/team-attendees').get_json() == []
+    # cleared company: dropped too
+    co3_member = _team(client, co2, 'Two Member')
+    client.post(f'/api/meetings/{mid}/team-attendees', json={'team_member_id': co3_member})
+    client.put(f'/api/meetings/{mid}', json=dict(base, company_id=None))
+    assert client.get(f'/api/meetings/{mid}/team-attendees').get_json() == []
+
+
+def test_company_meetings_attendee_count_includes_team(client):
+    coid = _make_company(client)
+    mid = _meeting_for(client, coid)
+    cid = _make_contact(client)
+    client.post(f'/api/meetings/{mid}/attendees', json={'contact_id': cid})
+    t = _team(client, coid)
+    client.post(f'/api/meetings/{mid}/team-attendees', json={'team_member_id': t})
+    rows = client.get(f'/api/companies/{coid}/meetings').get_json()
+    assert rows[0]['attendee_count'] == 2
+
+
+def test_contact_attendees_endpoint_excludes_team(client):
+    coid = _make_company(client)
+    mid = _meeting_for(client, coid)
+    t = _team(client, coid)
+    client.post(f'/api/meetings/{mid}/team-attendees', json={'team_member_id': t})
+    assert client.get(f'/api/meetings/{mid}/attendees').get_json() == []

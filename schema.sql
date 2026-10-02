@@ -112,3 +112,9 @@ CREATE TABLE IF NOT EXISTS account_team_members (
     created_at   TEXT    NOT NULL,
     updated_at   TEXT    NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS meeting_team_attendees (
+    meeting_id     INTEGER NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
+    team_member_id INTEGER NOT NULL REFERENCES account_team_members(id) ON DELETE CASCADE,
+    PRIMARY KEY (meeting_id, team_member_id)
+);

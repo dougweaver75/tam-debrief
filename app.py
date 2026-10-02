@@ -472,11 +472,10 @@ def api_company_contacts(coid):
 def api_company_meetings(coid):
     rows = query('''
         SELECT m.id, m.title, m.meeting_date,
-               COUNT(ma.contact_id) AS attendee_count
+               (SELECT COUNT(*) FROM meeting_attendees      WHERE meeting_id = m.id)
+             + (SELECT COUNT(*) FROM meeting_team_attendees WHERE meeting_id = m.id) AS attendee_count
         FROM meetings m
-        LEFT JOIN meeting_attendees ma ON ma.meeting_id = m.id
         WHERE m.company_id = ?
-        GROUP BY m.id
         ORDER BY m.meeting_date DESC
     ''', (coid,))
     return jsonify(as_list(rows))
@@ -791,6 +790,12 @@ def api_update_meeting(mid):
         'UPDATE meetings SET title=?,meeting_date=?,company_id=?,notes=?,updated_at=? WHERE id=?',
         (title, mdate, data.get('company_id') or None, data.get('notes',''), now_iso(), mid)
     )
+    # Team attendees must belong to the meeting's (new) company.
+    execute(
+        'DELETE FROM meeting_team_attendees WHERE meeting_id=? AND team_member_id NOT IN '
+        '(SELECT id FROM account_team_members WHERE company_id=?)',
+        (mid, data.get('company_id') or None)
+    )
     return jsonify(as_dict(query(
         'SELECT m.*, co.name AS company_name FROM meetings m '
         'LEFT JOIN companies co ON co.id=m.company_id WHERE m.id=?',
@@ -880,6 +885,47 @@ def api_add_attendee(mid):
 @app.route('/api/meetings/<int:mid>/attendees/<int:cid>', methods=['DELETE'])
 def api_remove_attendee(mid, cid):
     cur = execute('DELETE FROM meeting_attendees WHERE meeting_id=? AND contact_id=?', (mid, cid))
+    if cur.rowcount == 0:
+        return jsonify({'error': 'Not found'}), 404
+    return jsonify({'ok': True})
+
+
+@app.route('/api/meetings/<int:mid>/team-attendees', methods=['GET'])
+def api_list_team_attendees(mid):
+    if not query('SELECT id FROM meetings WHERE id=?', (mid,), one=True):
+        return jsonify({'error': 'Meeting not found'}), 404
+    rows = query(
+        'SELECT t.* FROM account_team_members t '
+        'JOIN meeting_team_attendees mta ON mta.team_member_id = t.id '
+        f'WHERE mta.meeting_id=? ORDER BY {TEAM_ORDER_SQL}',
+        (mid,)
+    )
+    return jsonify(as_list(rows))
+
+
+@app.route('/api/meetings/<int:mid>/team-attendees', methods=['POST'])
+def api_add_team_attendee(mid):
+    meeting = query('SELECT id, company_id FROM meetings WHERE id=?', (mid,), one=True)
+    if not meeting:
+        return jsonify({'error': 'Meeting not found'}), 404
+    data = request.get_json(force=True) or {}
+    tid = data.get('team_member_id')
+    if not isinstance(tid, int) or isinstance(tid, bool):
+        return jsonify({'error': 'team_member_id must be an integer'}), 400
+    member = query('SELECT id, company_id FROM account_team_members WHERE id=?', (tid,), one=True)
+    if not member:
+        return jsonify({'error': 'unknown team member'}), 400
+    if meeting['company_id'] is None or member['company_id'] != meeting['company_id']:
+        return jsonify({'error': "team member does not belong to the meeting's company"}), 400
+    execute('INSERT OR IGNORE INTO meeting_team_attendees (meeting_id, team_member_id) VALUES (?,?)',
+            (mid, tid))
+    return jsonify({'ok': True}), 201
+
+
+@app.route('/api/meetings/<int:mid>/team-attendees/<int:tid>', methods=['DELETE'])
+def api_remove_team_attendee(mid, tid):
+    cur = execute('DELETE FROM meeting_team_attendees WHERE meeting_id=? AND team_member_id=?',
+                  (mid, tid))
     if cur.rowcount == 0:
         return jsonify({'error': 'Not found'}), 404
     return jsonify({'ok': True})

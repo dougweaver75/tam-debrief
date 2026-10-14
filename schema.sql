@@ -71,6 +71,7 @@ CREATE TABLE IF NOT EXISTS action_items (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
     meeting_id   INTEGER NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
     assigned_to  INTEGER REFERENCES contacts(id) ON DELETE SET NULL,
+    assigned_team_member_id INTEGER REFERENCES account_team_members(id) ON DELETE SET NULL,
     description  TEXT    NOT NULL,
     due_date      TEXT,
     due_date_text TEXT,

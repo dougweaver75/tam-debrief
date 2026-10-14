@@ -71,6 +71,9 @@ def migrate_db():
     cols_ai = {r[1] for r in db.execute("PRAGMA table_info(action_items)")}
     if 'due_date_text' not in cols_ai:
         db.execute("ALTER TABLE action_items ADD COLUMN due_date_text TEXT")
+    if 'assigned_team_member_id' not in cols_ai:
+        db.execute("ALTER TABLE action_items ADD COLUMN assigned_team_member_id INTEGER "
+                   "REFERENCES account_team_members(id) ON DELETE SET NULL")
     cols_co = {r[1] for r in db.execute("PRAGMA table_info(companies)")}
     if 'logo' not in cols_co:
         db.execute("ALTER TABLE companies ADD COLUMN logo TEXT DEFAULT ''")
@@ -486,10 +489,13 @@ def api_company_action_items(coid):
     rows = query('''
         SELECT ai.id, ai.description, ai.due_date, ai.due_date_text, ai.completed,
                m.id AS meeting_id, m.title AS meeting_title,
-               c.id AS contact_id, c.first_name, c.last_name
+               c.id AS contact_id, c.first_name, c.last_name,
+               ai.assigned_team_member_id, t.name AS team_member_name,
+               t.role AS team_member_role, t.custom_title AS team_member_custom_title
         FROM action_items ai
         JOIN meetings m ON m.id = ai.meeting_id
         LEFT JOIN contacts c ON c.id = ai.assigned_to
+        LEFT JOIN account_team_members t ON t.id = ai.assigned_team_member_id
         WHERE m.company_id = ?
         ORDER BY ai.completed ASC, ai.due_date ASC, ai.created_at DESC
     ''', (coid,))
@@ -796,6 +802,12 @@ def api_update_meeting(mid):
         '(SELECT id FROM account_team_members WHERE company_id=?)',
         (mid, data.get('company_id') or None)
     )
+    execute(
+        'UPDATE action_items SET assigned_team_member_id=NULL '
+        'WHERE meeting_id=? AND assigned_team_member_id IS NOT NULL AND assigned_team_member_id NOT IN '
+        '(SELECT id FROM account_team_members WHERE company_id=?)',
+        (mid, data.get('company_id') or None)
+    )
     return jsonify(as_dict(query(
         'SELECT m.*, co.name AS company_name FROM meetings m '
         'LEFT JOIN companies co ON co.id=m.company_id WHERE m.id=?',
@@ -945,10 +957,13 @@ def api_dashboard():
         'ORDER BY interaction_date DESC, created_at DESC, id DESC LIMIT 10'
     )
     action_items = query(
-        'SELECT a.*, c.first_name, c.last_name, m.title AS meeting_title '
+        'SELECT a.*, c.first_name, c.last_name, m.title AS meeting_title, '
+        't.name AS team_member_name, t.role AS team_member_role, '
+        't.custom_title AS team_member_custom_title '
         'FROM action_items a '
         'JOIN meetings m ON m.id=a.meeting_id '
         'LEFT JOIN contacts c ON c.id=a.assigned_to '
+        'LEFT JOIN account_team_members t ON t.id=a.assigned_team_member_id '
         'WHERE a.completed=0 '
         'ORDER BY CASE WHEN a.due_date IS NULL THEN 1 ELSE 0 END ASC, a.due_date ASC '
         'LIMIT 20'
@@ -1059,11 +1074,33 @@ def api_dashboard():
 
 # ── API: action items ────────────────────────────────────────────────────────
 
+def _assignee_fields(data, meeting_id):
+    """Return ((contact_id, team_member_id), error). At most one assignee; a team
+    member must be one of the meeting's team attendees."""
+    contact_id = data.get('assigned_to') or None
+    team_id    = data.get('assigned_team_member_id') or None
+    if contact_id and team_id:
+        return None, 'assign to a contact or a team member, not both'
+    if team_id is not None:
+        if not isinstance(team_id, int) or isinstance(team_id, bool):
+            return None, 'assigned_team_member_id must be an integer'
+        attending = query(
+            'SELECT 1 FROM meeting_team_attendees WHERE meeting_id=? AND team_member_id=?',
+            (meeting_id, team_id), one=True)
+        if not attending:
+            return None, 'team member is not a team attendee of this meeting'
+    return (contact_id, team_id), None
+
+
 @app.route('/api/meetings/<int:mid>/action_items', methods=['GET'])
 def api_list_action_items(mid):
     rows = query(
-        'SELECT a.*, c.first_name, c.last_name FROM action_items a '
+        'SELECT a.*, c.first_name, c.last_name, '
+        't.name AS team_member_name, t.role AS team_member_role, '
+        't.custom_title AS team_member_custom_title '
+        'FROM action_items a '
         'LEFT JOIN contacts c ON c.id=a.assigned_to '
+        'LEFT JOIN account_team_members t ON t.id=a.assigned_team_member_id '
         'WHERE a.meeting_id=? '
         'ORDER BY CASE WHEN a.due_date IS NULL THEN 1 ELSE 0 END ASC, a.due_date ASC',
         (mid,)
@@ -1079,11 +1116,16 @@ def api_create_action_item(mid):
     description = data.get('description', '').strip()
     if not description:
         return jsonify({'error': 'description is required'}), 400
+    fields, err = _assignee_fields(data, mid)
+    if err:
+        return jsonify({'error': err}), 400
+    contact_id, team_id = fields
     ts  = now_iso()
     cur = execute(
-        'INSERT INTO action_items (meeting_id,assigned_to,description,due_date,due_date_text,completed,created_at,updated_at) '
-        'VALUES (?,?,?,?,?,0,?,?)',
-        (mid, data.get('assigned_to') or None, description,
+        'INSERT INTO action_items (meeting_id,assigned_to,assigned_team_member_id,description,'
+        'due_date,due_date_text,completed,created_at,updated_at) '
+        'VALUES (?,?,?,?,?,?,0,?,?)',
+        (mid, contact_id, team_id, description,
          data.get('due_date') or None, data.get('due_date_text') or None, ts, ts)
     )
     return jsonify(as_dict(query('SELECT * FROM action_items WHERE id=?', (cur.lastrowid,), one=True))), 201
@@ -1091,16 +1133,22 @@ def api_create_action_item(mid):
 
 @app.route('/api/action_items/<int:aid>', methods=['PUT'])
 def api_update_action_item(aid):
-    if not query('SELECT id FROM action_items WHERE id=?', (aid,), one=True):
+    item = query('SELECT id, meeting_id FROM action_items WHERE id=?', (aid,), one=True)
+    if not item:
         return jsonify({'error': 'Not found'}), 404
     data = request.get_json(force=True) or {}
     description = data.get('description', '').strip()
     if not description:
         return jsonify({'error': 'description is required'}), 400
+    fields, err = _assignee_fields(data, item['meeting_id'])
+    if err:
+        return jsonify({'error': err}), 400
+    contact_id, team_id = fields
     execute(
-        'UPDATE action_items SET description=?,due_date=?,due_date_text=?,assigned_to=?,updated_at=? WHERE id=?',
+        'UPDATE action_items SET description=?,due_date=?,due_date_text=?,assigned_to=?,'
+        'assigned_team_member_id=?,updated_at=? WHERE id=?',
         (description, data.get('due_date') or None, data.get('due_date_text') or None,
-         data.get('assigned_to') or None, now_iso(), aid)
+         contact_id, team_id, now_iso(), aid)
     )
     return jsonify(as_dict(query('SELECT * FROM action_items WHERE id=?', (aid,), one=True)))
 

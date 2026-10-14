@@ -985,3 +985,108 @@ def test_contact_attendees_endpoint_excludes_team(client):
     t = _team(client, coid)
     client.post(f'/api/meetings/{mid}/team-attendees', json={'team_member_id': t})
     assert client.get(f'/api/meetings/{mid}/attendees').get_json() == []
+
+
+# ── Action items assigned to team members ────────────────────────────────────
+
+def _team_attendee(client, coid, name='Zed', role='solutions_consultant'):
+    mid = _meeting_for(client, coid)
+    t = _team(client, coid, name, role)
+    client.post(f'/api/meetings/{mid}/team-attendees', json={'team_member_id': t})
+    return mid, t
+
+
+def test_action_item_assign_team_attendee(client):
+    coid = _make_company(client)
+    mid, t = _team_attendee(client, coid)
+    r = client.post(f'/api/meetings/{mid}/action_items',
+                    json={'description': 'Send deck', 'assigned_team_member_id': t})
+    assert r.status_code == 201
+    assert r.get_json()['assigned_team_member_id'] == t
+    row = client.get(f'/api/meetings/{mid}/action_items').get_json()[0]
+    assert row['team_member_name'] == 'Zed'
+    assert row['team_member_role'] == 'solutions_consultant'
+    assert row['assigned_to'] is None
+
+
+def test_action_item_team_member_must_be_meeting_attendee(client):
+    coid = _make_company(client)
+    mid = _meeting_for(client, coid)
+    t = _team(client, coid)  # on the company but not added to the meeting
+    r = client.post(f'/api/meetings/{mid}/action_items',
+                    json={'description': 'X', 'assigned_team_member_id': t})
+    assert r.status_code == 400
+
+
+def test_action_item_rejects_contact_and_team_member_together(client):
+    coid = _make_company(client)
+    mid, t = _team_attendee(client, coid)
+    cid = _make_contact(client)
+    r = client.post(f'/api/meetings/{mid}/action_items',
+                    json={'description': 'X', 'assigned_to': cid, 'assigned_team_member_id': t})
+    assert r.status_code == 400
+
+
+def test_action_item_update_switches_assignee(client):
+    coid = _make_company(client)
+    mid, t = _team_attendee(client, coid)
+    cid = _make_contact(client)
+    aid = client.post(f'/api/meetings/{mid}/action_items',
+                      json={'description': 'X', 'assigned_to': cid}).get_json()['id']
+    r = client.put(f'/api/action_items/{aid}',
+                   json={'description': 'X', 'assigned_team_member_id': t})
+    assert r.status_code == 200
+    assert r.get_json()['assigned_team_member_id'] == t
+    assert r.get_json()['assigned_to'] is None
+    r = client.put(f'/api/action_items/{aid}', json={'description': 'X', 'assigned_to': cid})
+    assert r.get_json()['assigned_to'] == cid
+    assert r.get_json()['assigned_team_member_id'] is None
+    bad = client.put(f'/api/action_items/{aid}',
+                     json={'description': 'X', 'assigned_team_member_id': 99999})
+    assert bad.status_code == 400
+
+
+def test_action_item_assignment_nulled_when_team_member_deleted(client):
+    coid = _make_company(client)
+    mid, t = _team_attendee(client, coid)
+    client.post(f'/api/meetings/{mid}/action_items',
+                json={'description': 'X', 'assigned_team_member_id': t})
+    client.delete(f'/api/team/{t}')
+    row = client.get(f'/api/meetings/{mid}/action_items').get_json()[0]
+    assert row['assigned_team_member_id'] is None
+    assert row['team_member_name'] is None
+
+
+def test_action_item_team_assignment_cleared_when_company_changes(client):
+    co1 = _make_company(client, 'One Co')
+    co2 = _make_company(client, 'Two Co')
+    mid, t = _team_attendee(client, co1)
+    client.post(f'/api/meetings/{mid}/action_items',
+                json={'description': 'X', 'assigned_team_member_id': t})
+    base = {'title': 'Co Meeting', 'meeting_date': '2026-06-01', 'notes': ''}
+    client.put(f'/api/meetings/{mid}', json=dict(base, company_id=co1))
+    assert client.get(f'/api/meetings/{mid}/action_items').get_json()[0]['assigned_team_member_id'] == t
+    client.put(f'/api/meetings/{mid}', json=dict(base, company_id=co2))
+    assert client.get(f'/api/meetings/{mid}/action_items').get_json()[0]['assigned_team_member_id'] is None
+
+
+def test_removing_team_attendee_keeps_assignment(client):
+    coid = _make_company(client)
+    mid, t = _team_attendee(client, coid)
+    client.post(f'/api/meetings/{mid}/action_items',
+                json={'description': 'X', 'assigned_team_member_id': t})
+    client.delete(f'/api/meetings/{mid}/team-attendees/{t}')
+    row = client.get(f'/api/meetings/{mid}/action_items').get_json()[0]
+    assert row['assigned_team_member_id'] == t
+    assert row['team_member_name'] == 'Zed'
+
+
+def test_company_and_dashboard_action_items_include_team_member_name(client):
+    coid = _make_company(client)
+    mid, t = _team_attendee(client, coid, 'Zed')
+    client.post(f'/api/meetings/{mid}/action_items',
+                json={'description': 'X', 'assigned_team_member_id': t})
+    co_rows = client.get(f'/api/companies/{coid}/action-items').get_json()
+    assert co_rows[0]['team_member_name'] == 'Zed'
+    dash = client.get('/api/dashboard').get_json()
+    assert dash['action_items'][0]['team_member_name'] == 'Zed'

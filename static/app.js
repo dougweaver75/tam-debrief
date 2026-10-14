@@ -785,7 +785,10 @@ function renderMeetingDetail(m, editMode = false) {
         <div class="notes-section">
           <div class="notes-section-title" style="display:flex;align-items:center;justify-content:space-between">
             LLM Summary
-            <button class="btn btn-secondary btn-sm" id="summaryEditBtn" onclick="enterSummaryEdit()">Edit</button>
+            <div id="summaryActions" style="display:flex;gap:6px">
+              <button class="btn btn-secondary btn-sm" onclick="printSummary()">${icon('print')} Print</button>
+              <button class="btn btn-secondary btn-sm" onclick="enterSummaryEdit()">Edit</button>
+            </div>
           </div>
           <div class="md-content" id="summaryBody">${DOMPurify.sanitize(marked.parse(m.summary))}</div>
         </div>` : ''}
@@ -800,7 +803,7 @@ function renderMeetingDetail(m, editMode = false) {
             <div style="white-space:pre-wrap;font-size:var(--fs-base)">${esc(m.notes)}</div>
           </div>
         </div>` : ''}
-        <div style="padding:12px 16px 8px;text-align:right">
+        <div class="print-hide" style="padding:12px 16px 8px;text-align:right">
           <a href="/sanitize?meeting_id=${m.id}" class="btn btn-secondary btn-sm">${icon('security')} Redact Notes</a>
         </div>
       </div>
@@ -811,7 +814,7 @@ function renderMeetingDetail(m, editMode = false) {
 function enterSummaryEdit() {
   const body = document.getElementById('summaryBody');
   if (!body) return;
-  document.getElementById('summaryEditBtn').style.display = 'none';
+  document.getElementById('summaryActions').style.display = 'none';
   body.innerHTML = `
     <textarea id="summaryEditText" style="width:100%;min-height:240px">${esc(_currentMeeting.summary)}</textarea>
     <div class="modal-footer" style="padding:8px 0 0">
@@ -819,6 +822,13 @@ function enterSummaryEdit() {
       <button class="btn btn-primary" id="summarySaveBtn" onclick="saveSummaryEdit()">Save</button>
     </div>`;
   document.getElementById('summaryEditText').focus();
+}
+
+function printSummary() {
+  const prevTitle = document.title;
+  document.title = _currentMeeting.title;
+  window.print();
+  document.title = prevTitle;
 }
 
 function cancelSummaryEdit() {

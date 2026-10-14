@@ -707,3 +707,11 @@ textarea { resize: vertical; min-height: 72px; }
   color: var(--text-muted); font-size: var(--fs-md); line-height: 1;
 }
 .chip button:hover { color: var(--text); }
+
+/* ── Print (meeting page: header + LLM summary only) ───────────────────── */
+@media print {
+  .sidebar, .back-link, .btn, .modal, .modal-backdrop, .toast, .print-hide,
+  #rawNotesSection { display: none !important; }
+  .main-content { margin-left: 0 !important; padding: 0 !important; }
+  body, .card { background: #fff !important; box-shadow: none !important; border: none !important; }
+}

@@ -189,16 +189,45 @@ async function populateContactDropdown(selectId, selectedId, excludeId) {
   } catch (e) { /* leave dropdown */ }
 }
 
-async function populateAttendeeDropdown(selectId, selectedId, meetingId) {
+async function populateAssigneeDropdown(selectId, selected, meetingId, fallbackTeam) {
   const sel = document.getElementById(selectId);
   if (!sel) return;
   try {
-    const attendees = await API.get(`/api/meetings/${meetingId}/attendees`);
-    sel.innerHTML = '<option value="">— Unassigned —</option>' +
-      attendees.map(c =>
-        `<option value="${c.id}"${c.id === selectedId ? ' selected' : ''}>${esc(c.last_name)}, ${esc(c.first_name)}</option>`
-      ).join('');
+    const [attendees, team] = await Promise.all([
+      API.get(`/api/meetings/${meetingId}/attendees`),
+      API.get(`/api/meetings/${meetingId}/team-attendees`)
+    ]);
+    const opt = (v, label) =>
+      `<option value="${v}"${v === selected ? ' selected' : ''}>${label}</option>`;
+    const teamOpts = team.map(t => opt(`t:${t.id}`, `${esc(t.name)} — ${esc(teamRoleLabel(t))}`));
+    if (fallbackTeam && selected === `t:${fallbackTeam.id}` && !team.some(t => t.id === fallbackTeam.id)) {
+      teamOpts.push(opt(`t:${fallbackTeam.id}`,
+        `${esc(fallbackTeam.name)} — ${esc(teamRoleLabel(fallbackTeam))} (not attending)`));
+    }
+    let html = '<option value="">— Unassigned —</option>';
+    if (attendees.length) {
+      html += '<optgroup label="Attendees">' +
+        attendees.map(c => opt(`c:${c.id}`, `${esc(c.last_name)}, ${esc(c.first_name)}`)).join('') +
+        '</optgroup>';
+    }
+    if (teamOpts.length) {
+      html += '<optgroup label="Account Team">' + teamOpts.join('') + '</optgroup>';
+    }
+    sel.innerHTML = html;
   } catch (e) { /* leave dropdown */ }
+}
+
+function assigneePayload(v) {
+  if (v && v.startsWith('t:')) return { assigned_to: null, assigned_team_member_id: parseInt(v.slice(2), 10) };
+  if (v && v.startsWith('c:')) return { assigned_to: parseInt(v.slice(2), 10), assigned_team_member_id: null };
+  return { assigned_to: null, assigned_team_member_id: null };
+}
+
+function teamAssigneeHtml(a) {
+  if (!a.team_member_name) return '';
+  const role = teamRoleLabel({ role: a.team_member_role, custom_title: a.team_member_custom_title });
+  return `<span>${icon('badge', '13px')} ${esc(a.team_member_name)}` +
+         `${role ? ` <span style="color:var(--text-muted)">· ${esc(role)}</span>` : ''}</span>`;
 }
 
 const TYPE_LABELS  = { call:'Call', email:'Email', meeting:'Meeting', note:'Note' };
@@ -1104,7 +1133,7 @@ async function openExtractModal() {
   `).join('');
 
   await Promise.all(
-    candidates.map((_, i) => populateAttendeeDropdown(`extractAssignee_${i}`, null, _currentMeeting.id))
+    candidates.map((_, i) => populateAssigneeDropdown(`extractAssignee_${i}`, null, _currentMeeting.id))
   );
 
   openModal('extractModal');
@@ -1121,7 +1150,7 @@ async function submitExtractedItems() {
     if (!desc) return;
     selected.push({
       description:   desc,
-      assigned_to:   document.getElementById(`extractAssignee_${i}`).value || null,
+      ...assigneePayload(document.getElementById(`extractAssignee_${i}`).value),
       due_date_text: document.getElementById(`extractDueText_${i}`).value.trim() || null,
       due_date:      document.getElementById(`extractDueDate_${i}`).value || null,
     });
@@ -1160,6 +1189,7 @@ function renderActionItems(items) {
         <div class="ai-meta">
           ${a.due_date ? `<span>Due: ${fmtDate(a.due_date)}</span>` : (a.due_date_text ? `<span>${esc(a.due_date_text)}</span>` : '')}
           ${a.first_name ? `<span>${icon('person', '13px')} ${esc(a.first_name)} ${esc(a.last_name)}</span>` : ''}
+          ${teamAssigneeHtml(a)}
         </div>
       </div>
       <div style="display:flex;gap:6px">
@@ -1174,7 +1204,7 @@ async function openAddActionItem() {
   document.getElementById('actionItemModalTitle').textContent = 'Add Action Item';
   document.getElementById('actionItemId').value = '';
   document.getElementById('actionItemForm').reset();
-  await populateAttendeeDropdown('aiAssignedTo', null, _currentMeeting.id);
+  await populateAssigneeDropdown('aiAssignedTo', null, _currentMeeting.id);
   openModal('actionItemModal');
 }
 
@@ -1188,7 +1218,12 @@ async function openEditActionItem(id) {
     document.getElementById('aiDescription').value  = a.description    || '';
     document.getElementById('aiDueDateText').value  = a.due_date_text  || '';
     document.getElementById('aiDueDate').value       = a.due_date       || '';
-    await populateAttendeeDropdown('aiAssignedTo', a.assigned_to, _currentMeeting.id);
+    const sel = a.assigned_team_member_id ? `t:${a.assigned_team_member_id}`
+              : (a.assigned_to ? `c:${a.assigned_to}` : null);
+    const fallbackTeam = a.assigned_team_member_id
+      ? { id: a.assigned_team_member_id, name: a.team_member_name, role: a.team_member_role, custom_title: a.team_member_custom_title }
+      : null;
+    await populateAssigneeDropdown('aiAssignedTo', sel, _currentMeeting.id, fallbackTeam);
     openModal('actionItemModal');
   } catch (e) { showToast('Failed to load action item.'); }
 }
@@ -1200,7 +1235,7 @@ async function submitActionItem(e) {
     description:   document.getElementById('aiDescription').value.trim(),
     due_date_text: document.getElementById('aiDueDateText').value.trim() || null,
     due_date:      document.getElementById('aiDueDate').value || null,
-    assigned_to:  document.getElementById('aiAssignedTo').value || null,
+    ...assigneePayload(document.getElementById('aiAssignedTo').value),
   };
   try {
     if (id) {
@@ -1493,6 +1528,7 @@ function renderCompanyActionItems(items) {
         <div class="ai-meta">
           ${a.due_date ? `<span>Due: ${fmtDate(a.due_date)}</span>` : (a.due_date_text ? `<span>${esc(a.due_date_text)}</span>` : '')}
           ${a.first_name ? `<span>${icon('person', '13px')} <a href="/contacts/${a.contact_id}" class="table-link">${esc(a.first_name)} ${esc(a.last_name)}</a></span>` : ''}
+          ${teamAssigneeHtml(a)}
           <span>${icon('calendar_today', '13px')} <a href="/meetings/${a.meeting_id}" class="table-link">${esc(a.meeting_title)}</a></span>
         </div>
       </div>
@@ -1933,6 +1969,7 @@ function renderDashboard(data) {
               <a href="/meetings/${a.meeting_id}" class="table-link">${esc(a.meeting_title)}</a>
               ${a.due_date ? `<span>Due: ${fmtDate(a.due_date)}</span>` : ''}
               ${a.first_name ? `<span>${icon('person', '13px')} ${esc(a.first_name)} ${esc(a.last_name)}</span>` : ''}
+              ${teamAssigneeHtml(a)}
             </div>
           </div>
         </div>

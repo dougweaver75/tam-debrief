@@ -1081,6 +1081,44 @@ def test_removing_team_attendee_keeps_assignment(client):
     assert row['team_member_name'] == 'Zed'
 
 
+def test_action_item_unchanged_team_assignee_allowed_after_attendee_removed(client):
+    coid = _make_company(client)
+    mid, t = _team_attendee(client, coid)
+    aid = client.post(f'/api/meetings/{mid}/action_items',
+                      json={'description': 'Old', 'assigned_team_member_id': t}).get_json()['id']
+    client.delete(f'/api/meetings/{mid}/team-attendees/{t}')
+    r = client.put(f'/api/action_items/{aid}',
+                   json={'description': 'New', 'assigned_team_member_id': t})
+    assert r.status_code == 200
+    assert r.get_json()['assigned_team_member_id'] == t
+    assert r.get_json()['description'] == 'New'
+    other = _team(client, coid, 'Other', 'account_executive')
+    bad = client.put(f'/api/action_items/{aid}',
+                     json={'description': 'New', 'assigned_team_member_id': other})
+    assert bad.status_code == 400
+
+
+def test_action_item_team_member_id_must_be_integer(client):
+    coid = _make_company(client)
+    mid, t = _team_attendee(client, coid)
+    for bad in ('3', True):
+        r = client.post(f'/api/meetings/{mid}/action_items',
+                        json={'description': 'X', 'assigned_team_member_id': bad})
+        assert r.status_code == 400
+
+
+def test_action_item_team_assignment_cleared_when_company_removed(client):
+    coid = _make_company(client)
+    mid, t = _team_attendee(client, coid)
+    client.post(f'/api/meetings/{mid}/action_items',
+                json={'description': 'X', 'assigned_team_member_id': t})
+    r = client.put(f'/api/meetings/{mid}',
+                   json={'title': 'Co Meeting', 'meeting_date': '2026-06-01',
+                         'notes': '', 'company_id': None})
+    assert r.status_code == 200
+    assert client.get(f'/api/meetings/{mid}/action_items').get_json()[0]['assigned_team_member_id'] is None
+
+
 def test_company_and_dashboard_action_items_include_team_member_name(client):
     coid = _make_company(client)
     mid, t = _team_attendee(client, coid, 'Zed')

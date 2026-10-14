@@ -1074,9 +1074,10 @@ def api_dashboard():
 
 # ── API: action items ────────────────────────────────────────────────────────
 
-def _assignee_fields(data, meeting_id):
+def _assignee_fields(data, meeting_id, current_team_id=None):
     """Return ((contact_id, team_member_id), error). At most one assignee; a team
-    member must be one of the meeting's team attendees."""
+    member must be one of the meeting's team attendees, unless it is the item's
+    existing (unchanged) assignee."""
     contact_id = data.get('assigned_to') or None
     team_id    = data.get('assigned_team_member_id') or None
     if contact_id and team_id:
@@ -1084,11 +1085,12 @@ def _assignee_fields(data, meeting_id):
     if team_id is not None:
         if not isinstance(team_id, int) or isinstance(team_id, bool):
             return None, 'assigned_team_member_id must be an integer'
-        attending = query(
-            'SELECT 1 FROM meeting_team_attendees WHERE meeting_id=? AND team_member_id=?',
-            (meeting_id, team_id), one=True)
-        if not attending:
-            return None, 'team member is not a team attendee of this meeting'
+        if team_id != current_team_id:
+            attending = query(
+                'SELECT 1 FROM meeting_team_attendees WHERE meeting_id=? AND team_member_id=?',
+                (meeting_id, team_id), one=True)
+            if not attending:
+                return None, 'team member is not a team attendee of this meeting'
     return (contact_id, team_id), None
 
 
@@ -1133,14 +1135,16 @@ def api_create_action_item(mid):
 
 @app.route('/api/action_items/<int:aid>', methods=['PUT'])
 def api_update_action_item(aid):
-    item = query('SELECT id, meeting_id FROM action_items WHERE id=?', (aid,), one=True)
+    item = query('SELECT id, meeting_id, assigned_team_member_id FROM action_items WHERE id=?',
+                 (aid,), one=True)
     if not item:
         return jsonify({'error': 'Not found'}), 404
     data = request.get_json(force=True) or {}
     description = data.get('description', '').strip()
     if not description:
         return jsonify({'error': 'description is required'}), 400
-    fields, err = _assignee_fields(data, item['meeting_id'])
+    fields, err = _assignee_fields(data, item['meeting_id'],
+                                   item['assigned_team_member_id'])
     if err:
         return jsonify({'error': err}), 400
     contact_id, team_id = fields

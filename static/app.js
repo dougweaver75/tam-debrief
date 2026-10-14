@@ -783,8 +783,11 @@ function renderMeetingDetail(m, editMode = false) {
         </div>
         ${m.summary ? `
         <div class="notes-section">
-          <div class="notes-section-title">LLM Summary</div>
-          <div class="md-content">${DOMPurify.sanitize(marked.parse(m.summary))}</div>
+          <div class="notes-section-title" style="display:flex;align-items:center;justify-content:space-between">
+            LLM Summary
+            <button class="btn btn-secondary btn-sm" id="summaryEditBtn" onclick="enterSummaryEdit()">Edit</button>
+          </div>
+          <div class="md-content" id="summaryBody">${DOMPurify.sanitize(marked.parse(m.summary))}</div>
         </div>` : ''}
         ${m.notes ? `
         <div class="notes-section${m.summary ? ' collapsed' : ''}" id="rawNotesSection">
@@ -802,6 +805,39 @@ function renderMeetingDetail(m, editMode = false) {
         </div>
       </div>
     `;
+  }
+}
+
+function enterSummaryEdit() {
+  const body = document.getElementById('summaryBody');
+  if (!body) return;
+  document.getElementById('summaryEditBtn').style.display = 'none';
+  body.innerHTML = `
+    <textarea id="summaryEditText" style="width:100%;min-height:240px">${esc(_currentMeeting.summary)}</textarea>
+    <div class="modal-footer" style="padding:8px 0 0">
+      <button class="btn btn-secondary" onclick="cancelSummaryEdit()">Cancel</button>
+      <button class="btn btn-primary" id="summarySaveBtn" onclick="saveSummaryEdit()">Save</button>
+    </div>`;
+  document.getElementById('summaryEditText').focus();
+}
+
+function cancelSummaryEdit() {
+  renderMeetingDetail(_currentMeeting, false);
+}
+
+async function saveSummaryEdit() {
+  const text = document.getElementById('summaryEditText').value.trim();
+  if (!text) { showToast("Summary can't be empty."); return; }
+  const btn = document.getElementById('summarySaveBtn');
+  if (btn) btn.disabled = true;
+  try {
+    await API.patch(`/api/meetings/${_currentMeeting.id}/summary`, { summary: text });
+    _currentMeeting.summary = text;
+    renderMeetingDetail(_currentMeeting, false);
+    showToast('Summary updated.');
+  } catch (e) {
+    showToast('Save failed.');
+    if (btn) btn.disabled = false;
   }
 }
 

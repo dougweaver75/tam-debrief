@@ -195,7 +195,7 @@ async function populateAssigneeDropdown(selectId, selected, meetingId, fallbackT
   try {
     const [attendees, team] = await Promise.all([
       API.get(`/api/meetings/${meetingId}/attendees`),
-      API.get(`/api/meetings/${meetingId}/team-attendees`)
+      API.get(`/api/meetings/${meetingId}/team-attendees`).catch(() => [])
     ]);
     const opt = (v, label) =>
       `<option value="${v}"${v === selected ? ' selected' : ''}>${label}</option>`;
